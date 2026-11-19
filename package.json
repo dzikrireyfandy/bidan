@@ -1,0 +1,13 @@
+{
+  "name": "sistem-kesehatan-terintegrasi",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:backend": "node apps/backend/src/server.js",
+    "build:fe-bidan": "echo 'Building fe-bidan'",
+    "build:fe-rs": "echo 'Building fe-rs'",
+    "test": "echo 'No tests specified'"
+  }
+}

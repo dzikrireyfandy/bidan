@@ -16,6 +16,7 @@ jest.mock('../src/db/pool', () => ({
 }));
 
 import v1Router from '../src/routes/v1';
+import { getRouteRegistry } from '../src/routes/v1/_registry';
 import { errorHandler, notFoundHandler } from '../src/middleware/errorHandler';
 
 interface Layer {
@@ -53,13 +54,40 @@ const routes: Rute[] = kumpulkan(v1Router);
 const berlabel = (r: { method: string; path: string }): string => `${r.method} ${r.path}`;
 
 describe('Inventaris endpoint /api/v1', () => {
-  test('minimal 126 endpoint terdaftar', () => {
-    expect(routes.length).toBeGreaterThanOrEqual(126);
+  const registry = getRouteRegistry();
+
+  test('tepat 126 endpoint bisnis terdaftar', () => {
+    const bisnis = routes.filter((rute) => rute.path !== '/');
+    expect(bisnis.length).toBe(126);
+    expect(registry.length).toBe(126);
   });
 
   test('tidak ada duplikat method+path', () => {
     const unik = new Set(routes.map(berlabel));
     expect(unik.size).toBe(routes.length);
+  });
+
+  test('setiap endpoint memiliki skema validasi', () => {
+    for (const meta of registry) {
+      expect(Object.keys(meta.schemas).length).toBeGreaterThan(0);
+    }
+  });
+
+  test('hanya endpoint publik yang tidak memerlukan autentikasi', () => {
+    const publik = registry.filter((meta) => !meta.auth).map((meta) => `${meta.method.toUpperCase()} ${meta.path}`);
+    expect(publik.sort()).toEqual(
+      [
+        'POST /auth/login',
+        'POST /auth/reset/request',
+        'POST /auth/reset/verify',
+        'POST /public/konten/list',
+        'POST /public/layanan/list',
+        'POST /public/jadwal/list',
+        'POST /public/sesi/list',
+        'POST /public/pasien/cek',
+        'POST /public/reservasi'
+      ].sort()
+    );
   });
 
   test('setiap domain memiliki rute', () => {
@@ -110,7 +138,7 @@ describe('Matriks RBAC: rute terlindungi menolak tanpa token', () => {
       expect(response.status).toBe(401);
       expect(response.body).toEqual({
         success: false,
-        error: { code: 401, message: 'Token tidak ditemukan', details: null }
+        error: { code: 401, errorId: 'ERR-AUTH-01', message: 'Token tidak ditemukan', details: null }
       });
     }
   );
@@ -121,14 +149,35 @@ describe('Kontrak SQL kritis (FEFO & pulang rawat inap)', () => {
     fs.readFileSync(path.resolve(__dirname, '..', 'src', relatif), 'utf8');
 
   test('inventaris memanggil sp_pengeluaran_resep_fefo dengan OUTPUT kode_hasil', () => {
-    const source = baca('routes/v1/inventaris.routes.ts');
+    const source = baca('repositories/inventaris.repository.ts');
     expect(source).toContain('sp_pengeluaran_resep_fefo');
     expect(source).toContain('@kode_hasil = @kode OUTPUT');
   });
 
   test('ranap memanggil sp_pulang_rawat_inap dengan OUTPUT kode_hasil', () => {
-    const source = baca('routes/v1/ranap.routes.ts');
+    const source = baca('repositories/ranap.repository.ts');
     expect(source).toContain('sp_pulang_rawat_inap');
     expect(source).toContain('@kode_hasil = @kode OUTPUT');
+  });
+
+  test('tidak ada SQL mentah di lapisan route', () => {
+    const folder = path.resolve(__dirname, '..', 'src', 'routes', 'v1');
+    for (const file of fs.readdirSync(folder)) {
+      if (!file.endsWith('.routes.ts')) continue;
+      const source = fs.readFileSync(path.join(folder, file), 'utf8');
+      expect(source).not.toMatch(/\b(SELECT|INSERT INTO|UPDATE\s+\[|DELETE FROM|EXEC\b)/i);
+    }
+  });
+
+  test('tidak ada akses database langsung di lapisan route dan controller', () => {
+    for (const dir of ['routes/v1', 'controllers']) {
+      const folder = path.resolve(__dirname, '..', 'src', dir);
+      for (const file of fs.readdirSync(folder)) {
+        if (!file.endsWith('.ts')) continue;
+        const source = fs.readFileSync(path.join(folder, file), 'utf8');
+        expect(source).not.toContain("from '../db/pool'");
+        expect(source).not.toContain("from '../../db/pool'");
+      }
+    }
   });
 });

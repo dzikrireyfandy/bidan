@@ -12,17 +12,18 @@ const toSeconds = (value: string): number => {
   }
   const match = /^(\d+)([smhdw])$/.exec(value.trim());
   if (!match || !match[1] || !match[2]) {
-    return 86400;
+    return 1800;
   }
-  return Number(match[1]) * (UNIT_SECONDS[match[2]] ?? 86400);
+  return Number(match[1]) * (UNIT_SECONDS[match[2]] ?? 1800);
 };
 
-export function signToken({ akunId, peran, subPeran = null, stafId = null, pasienId = null }: {
+export function signToken({ akunId, peran, subPeran = null, stafId = null, pasienId = null, unitId = null }: {
   akunId: string;
   peran: Peran;
   subPeran?: SubPeran | null;
   stafId?: string | null;
   pasienId?: string | null;
+  unitId?: string | null;
 }): string {
   const signOptions: jwt.SignOptions = { expiresIn: toSeconds(config.JWT_EXPIRES_IN) };
   return jwt.sign(
@@ -31,7 +32,8 @@ export function signToken({ akunId, peran, subPeran = null, stafId = null, pasie
       peran,
       subPeran,
       stafId,
-      pasienId
+      pasienId,
+      unitId
     },
     config.JWT_SECRET,
     signOptions
@@ -56,17 +58,23 @@ export const authenticate: RequestHandler = (req, res, next) => {
       subPeran?: SubPeran | null;
       stafId?: string | null;
       pasienId?: string | null;
+      unitId?: string | null;
     };
     req.auth = {
       akunId: decoded.sub,
       peran: decoded.peran,
       subPeran: decoded.subPeran || null,
       stafId: decoded.stafId || null,
-      pasienId: decoded.pasienId || null
+      pasienId: decoded.pasienId || null,
+      unitId: decoded.unitId || null
     };
     next();
   } catch (err) {
-    return next(ApiError.unauthorized('Token tidak valid atau kedaluwarsa'));
+    const code = err instanceof jwt.TokenExpiredError ? 'ERR-AUTH-04' : 'ERR-AUTH-01';
+    const message = code === 'ERR-AUTH-04'
+      ? 'Sesi Anda telah berakhir, silakan login kembali'
+      : 'Token tidak valid atau kedaluwarsa';
+    return next(ApiError.unauthorized(message, null, code));
   }
 };
 

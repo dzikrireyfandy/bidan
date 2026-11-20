@@ -1,8 +1,12 @@
+import type { ErrorCode } from '../errors/codes';
+
 export type Peran = 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'STAFF' | 'PASIEN';
 
 export type SubPeran = 'PERAWAT' | 'RESEPSIONIS';
 
 export type ClientApp = 'BIDAN' | 'RS' | 'PORTAL';
+
+export type Profile = Peran | 'STAFF:PERAWAT' | 'STAFF:RESEPSIONIS';
 
 export interface AuthContext {
   akunId: string;
@@ -10,6 +14,7 @@ export interface AuthContext {
   subPeran: SubPeran | null;
   stafId: string | null;
   pasienId: string | null;
+  unitId: string | null;
 }
 
 export interface ApiSuccess<T> {
@@ -22,6 +27,7 @@ export interface ApiFailure {
   success: false;
   error: {
     code: number;
+    errorId: ErrorCode | null;
     message: string;
     details: unknown;
   };
@@ -51,6 +57,11 @@ declare global {
       auth?: AuthContext;
       clientApp: ClientApp;
       id: string;
+      validated?: {
+        body?: unknown;
+        query?: unknown;
+        params?: unknown;
+      };
     }
   }
 }

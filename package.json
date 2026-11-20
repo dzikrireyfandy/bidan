@@ -5,7 +5,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev:backend": "node apps/backend/src/server.js",
+    "dev:backend": "npm --workspace apps/backend run dev",
     "build:fe-bidan": "echo 'Building fe-bidan'",
     "build:fe-rs": "echo 'Building fe-rs'",
     "test": "echo 'No tests specified'"

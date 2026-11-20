@@ -1,20 +1,23 @@
+import { RequestHandler } from 'express';
 import { z } from 'zod';
-import ApiError from '../../errors/ApiError';
+import { parseInput, paginate, parseBody, parseQuery, parseParams } from '../../validation/common';
+import type { RouteSchemas } from './_registry';
 
-export const parseBody = <S extends z.ZodType>(schema: S, body: unknown): z.infer<S> => {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    throw ApiError.badRequest('Validasi gagal', result.error.issues);
-  }
-  return result.data;
+export const validate = (schemas: RouteSchemas): RequestHandler => {
+  return (req, _res, next) => {
+    try {
+      req.validated = {
+        body: schemas.body ? parseInput(schemas.body, req.body ?? {}, 'body') : undefined,
+        query: schemas.query ? parseInput(schemas.query, req.query ?? {}, 'query') : undefined,
+        params: schemas.params ? parseInput(schemas.params, req.params ?? {}, 'params') : undefined
+      };
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
 };
 
-export const parseQuery = parseBody;
-
-export const paginate = (value: unknown, fallback: number, max: number): number => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
-  return Math.min(Math.trunc(parsed), max);
-};
-
-export default { parseBody, parseQuery, paginate };
+export { parseBody, parseQuery, parseParams, paginate };
+export type { RouteSchemas };
+export default validate;

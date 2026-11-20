@@ -69,10 +69,10 @@ export class LaporanRepository {
 
   async jamTersibuk(): Promise<Record<string, unknown>[]> {
     const result = await db.query<Record<string, unknown>>(
-      `SELECT DATEPART(HOUR, tgl_masuk) AS jam, COUNT(*) AS jumlah
+      `SELECT DATEPART(HOUR, created_at) AS jam, COUNT(*) AS jumlah
          FROM [Kunjungan]
-        WHERE tgl_masuk >= DATEADD(DAY, -30, SYSDATETIME())
-        GROUP BY DATEPART(HOUR, tgl_masuk)
+        WHERE created_at >= DATEADD(DAY, -30, SYSDATETIME())
+        GROUP BY DATEPART(HOUR, created_at)
         ORDER BY jumlah DESC`
     );
     return result.recordset;

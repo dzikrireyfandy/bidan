@@ -14,14 +14,9 @@ export const apiClient = axios.create({
   },
 });
 
-apiClient.interceptors.request.use(async (config) => {
+apiClient.interceptors.request.use((config) => {
   const token = session.bacaToken();
-  if (token) {
-    if (session.perluRefresh(token)) {
-      await session.refresh();
-    }
-    config.headers.Authorization = `Bearer ${session.bacaToken() ?? token}`;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 

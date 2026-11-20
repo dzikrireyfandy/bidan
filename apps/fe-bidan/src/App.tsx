@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { session } from './api/client';
 import './styles.css';
 
 export function App() {
@@ -18,8 +19,8 @@ export function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('bidan_access_token');
-    localStorage.removeItem('bidan_user_role');
+    void session.logout();
+    session.bersihkan();
     setIsAuthenticated(false);
   };
 

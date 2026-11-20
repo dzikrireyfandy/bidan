@@ -15,6 +15,7 @@ import type KeuanganRepository from '../../src/repositories/keuangan.repository'
 import { ambilError, ambilErrorSync } from './helpers';
 
 const buatRepo = () => ({
+  kunjunganExists: jest.fn().mockResolvedValue(true),
   findTagihanIdByKunjungan: jest.fn(),
   createTagihan: jest.fn(),
   listRincian: jest.fn().mockResolvedValue([]),
@@ -74,6 +75,14 @@ describe('KeuanganService', () => {
 
     const err = await ambilError(service.detailTagihan('kunjungan-1'));
     expect(err.statusCode).toBe(500);
+  });
+
+  test('detailTagihan menolak kunjungan yang tidak ada dengan 404', async () => {
+    repo.kunjunganExists.mockResolvedValue(false);
+
+    const err = await ambilError(service.detailTagihan('kunjungan-hantu'));
+    expect(err.statusCode).toBe(404);
+    expect(repo.createTagihan).not.toHaveBeenCalled();
   });
 
   test('bayar menolak tagihan yang tidak ditemukan dengan ERR-FIN-02', async () => {

@@ -6,8 +6,12 @@
   ],
   "scripts": {
     "dev:backend": "npm --workspace apps/backend run dev",
-    "build:fe-bidan": "echo 'Building fe-bidan'",
-    "build:fe-rs": "echo 'Building fe-rs'",
-    "test": "echo 'No tests specified'"
+    "typecheck:backend": "npm --workspace apps/backend run typecheck",
+    "test": "npm --workspace apps/backend test",
+    "test:backend": "npm --workspace apps/backend test",
+    "build:backend": "npm --workspace apps/backend run build",
+    "build:fe-bidan": "npm --workspace apps/fe-bidan run build",
+    "build:fe-rs": "npm --workspace apps/fe-rs run build",
+    "build:all": "npm run build:backend && npm run build:fe-bidan && npm run build:fe-rs"
   }
 }

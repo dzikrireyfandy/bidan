@@ -2,6 +2,13 @@ export interface QueryRunner {
   query(text: string, params?: Record<string, unknown>): Promise<{ recordset: Record<string, unknown>[] }>;
 }
 
+/**
+ * Basis repository generik untuk entitas CRUD sederhana.
+ *
+ * Sengaja dipertahankan sebagai API internal (dipakai oleh `tests/repository.test.ts`)
+ * meskipun repository domain saat ini memakai SQL khusus per kebutuhan. Jangan
+ * menambahkan query domain baru di sini; gunakan repository domain terkait.
+ */
 export abstract class BaseRepository<T, TCreate = Partial<T>, TUpdate = Partial<T>> {
   protected readonly db: QueryRunner;
   protected readonly table: string;

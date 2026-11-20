@@ -3,7 +3,7 @@ import ApiError from '../errors/ApiError';
 import type { ApiFailure } from '../types';
 import { ErrorCode } from '../errors/codes';
 
-export const notFoundHandler: RequestHandler = (req, res, next) => {
+export const notFoundHandler: RequestHandler = (req, _res, next) => {
   next(ApiError.notFound(`Route not found: ${req.method} ${req.originalUrl}`));
 };
 

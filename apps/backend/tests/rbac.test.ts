@@ -14,19 +14,19 @@ describe('RBAC & Auth & Client Context Integration Tests', () => {
     app.use(clientContext);
 
     // Probe routes
-    app.get('/probe/dokter', authenticate, requireRole(PERAN.DOKTER, PERAN.SUPERADMIN), (req, res) => {
+    app.get('/probe/dokter', authenticate, requireRole(PERAN.DOKTER, PERAN.SUPERADMIN), (_req, res) => {
       res.json({ success: true, data: { message: 'ok' } });
     });
 
-    app.get('/probe/admin', authenticate, requireRole(PERAN.ADMIN_LOKAL, PERAN.SUPERADMIN), (req, res) => {
+    app.get('/probe/admin', authenticate, requireRole(PERAN.ADMIN_LOKAL, PERAN.SUPERADMIN), (_req, res) => {
       res.json({ success: true, data: { message: 'ok' } });
     });
 
-    app.get('/probe/perawat', authenticate, requireSubPeran(SUB_PERAN.PERAWAT), (req, res) => {
+    app.get('/probe/perawat', authenticate, requireSubPeran(SUB_PERAN.PERAWAT), (_req, res) => {
       res.json({ success: true, data: { message: 'ok' } });
     });
 
-    app.get('/probe/self/:id', authenticate, allowSelf((req) => String(req.params['id'])), (req, res) => {
+    app.get('/probe/self/:id', authenticate, allowSelf((req) => String(req.params['id'])), (_req, res) => {
       res.json({ success: true, data: { message: 'ok' } });
     });
 

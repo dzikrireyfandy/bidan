@@ -1,5 +1,4 @@
 import { RequestHandler } from 'express';
-import { z } from 'zod';
 import { parseInput, paginate, parseBody, parseQuery, parseParams } from '../../validation/common';
 import type { RouteSchemas } from './_registry';
 

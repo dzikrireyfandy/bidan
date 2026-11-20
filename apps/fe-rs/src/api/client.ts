@@ -1,4 +1,10 @@
 import axios from 'axios';
+import { createSession } from './session';
+
+export const session = createSession({
+  storageKey: 'rs_access_token',
+  roleKey: 'rs_user_role',
+});
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
@@ -8,10 +14,13 @@ export const apiClient = axios.create({
   },
 });
 
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('rs_access_token');
+apiClient.interceptors.request.use(async (config) => {
+  const token = session.bacaToken();
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    if (session.perluRefresh(token)) {
+      await session.refresh();
+    }
+    config.headers.Authorization = `Bearer ${session.bacaToken() ?? token}`;
   }
   return config;
 });
@@ -20,8 +29,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      localStorage.removeItem('rs_access_token');
-      localStorage.removeItem('rs_user_role');
+      session.bersihkan();
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }

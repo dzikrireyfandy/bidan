@@ -64,9 +64,7 @@ const semuaRute = getRouteRegistry().filter((meta) => meta.auth);
 describe('Matriks RBAC 126 endpoint', () => {
   test('setiap kombinasi rute x profil diuji', () => {
     expect(semuaRute.length).toBeGreaterThan(80);
-    expect(semuaRute.length * SEMUA_PROFIL.length).toBe(
-      semuaRute.reduce((total, meta) => total + SEMUA_PROFIL.length, 0)
-    );
+    expect(semuaRute.length * SEMUA_PROFIL.length).toBeGreaterThan(0);
   });
 
   test.each(

@@ -1,4 +1,5 @@
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import createApp from '../src/app';
 import config from '../src/config/env';
 import { resetRateLimit } from '../src/middleware/rateLimit';
@@ -64,5 +65,41 @@ describe('Keamanan origin dan rate limit', () => {
     const response = await request(app).post('/api/v1/auth/login').send({});
     expect(response.status).toBe(429);
     expect(response.body.error.errorId).toBe('ERR-SYS-03');
+  });
+
+  test('respons rate limit menyertakan header kuota', async () => {
+    resetRateLimit();
+    const response = await request(app).post('/api/v1/auth/login').send({});
+    expect(response.headers['x-ratelimit-limit']).toBe(String(config.AUTH_RATE_LIMIT_MAX));
+    expect(response.headers['x-ratelimit-remaining']).toBeDefined();
+  });
+
+  test('preflight dari origin asing ditolak 403', async () => {
+    const response = await request(app)
+      .options('/api/v1/auth/login')
+      .set('Origin', 'http://evil.example')
+      .set('Access-Control-Request-Method', 'POST');
+    expect(response.status).toBe(403);
+    expect(response.body.error.errorId).toBe('ERR-AUTH-03');
+  });
+
+  test('preflight dari origin yang diizinkan mengembalikan header CORS', async () => {
+    const origin = config.ALLOWED_ORIGINS[0] as string;
+    const response = await request(app)
+      .options('/api/v1/auth/login')
+      .set('Origin', origin)
+      .set('Access-Control-Request-Method', 'POST');
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe(origin);
+  });
+
+  test('token kedaluwarsa menghasilkan 401 ERR-AUTH-04', async () => {
+    const token = jwt.sign({ sub: 'akun-uji', peran: 'SUPERADMIN' }, config.JWT_SECRET, { expiresIn: -1 });
+    const response = await request(app)
+      .post('/api/v1/unit-pelayanan/list')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    expect(response.status).toBe(401);
+    expect(response.body.error.errorId).toBe('ERR-AUTH-04');
   });
 });

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
-import type { ApiSuccess, Ruangan, ApiErrorBody } from '../api/types';
-import axios from 'axios';
+import { pesanErrorApi } from '../api/errors';
+import type { ApiSuccess, Ruangan } from '../api/types';
 
 interface DashboardPageProps {
   onLogout: () => void;
@@ -50,12 +50,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         setRuanganList(res.data.data);
       }
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        const data = err.response?.data as ApiErrorBody | undefined;
-        setError(data?.error?.message || 'Gagal memuat data ruangan dari server.');
-      } else {
-        setError('Gagal terhubung ke server.');
-      }
+      setError(pesanErrorApi(err, 'Gagal memuat data ruangan dari server.'));
     } finally {
       setLoading(false);
     }

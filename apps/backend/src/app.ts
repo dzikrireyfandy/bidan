@@ -48,7 +48,7 @@ export function createApp() {
     keyPrefix: 'auth'
   });
 
-  app.get('/health', (req: Request, res: Response) => {
+  app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({
       success: true,
       data: {
@@ -58,9 +58,10 @@ export function createApp() {
     });
   });
 
+  app.use('/api/v1', globalLimiter);
   app.use('/api/v1/auth/login', authLimiter);
   app.use('/api/v1/auth/reset', authLimiter);
-  app.use('/api/v1', globalLimiter, v1Router);
+  app.use('/api/v1', v1Router);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

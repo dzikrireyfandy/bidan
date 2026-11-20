@@ -67,10 +67,40 @@ describe('Inventaris endpoint /api/v1', () => {
     expect(unik.size).toBe(routes.length);
   });
 
-  test('setiap endpoint memiliki skema validasi', () => {
+  test('setiap endpoint memiliki skema validasi sesuai bentuk request', () => {
+    // Endpoint aksi tanpa payload: hanya memakai params, tidak butuh body.
+    const tanpaBody = new Set([
+      'POST /kunjungan/:id/tagihan/detail',
+      'POST /pasien/:id/rme/detail',
+      'POST /pasien/:id/rme/export',
+      'POST /notifikasi/:id/kirim-ulang',
+      'PATCH /reservasi/:id/batal'
+    ]);
+
     for (const meta of registry) {
+      const label = `${meta.method.toUpperCase()} ${meta.path}`;
       expect(Object.keys(meta.schemas).length).toBeGreaterThan(0);
+
+      if (meta.path.includes(':')) {
+        expect({ label, hasParams: meta.schemas.params !== undefined }).toEqual({ label, hasParams: true });
+      }
+
+      if (['post', 'patch', 'put'].includes(meta.method) && !tanpaBody.has(label)) {
+        expect({ label, hasBody: meta.schemas.body !== undefined }).toEqual({ label, hasBody: true });
+      }
+
+      if (meta.auth) {
+        expect({ label, punyaProfil: meta.profiles.length > 0 }).toEqual({ label, punyaProfil: true });
+      } else {
+        expect(meta.profiles).toHaveLength(0);
+      }
     }
+  });
+
+  test('registry sinkron dengan router yang benar-benar terpasang', () => {
+    const dariRouter = new Set(routes.filter((rute) => rute.path !== '/').map(berlabel));
+    const dariRegistry = new Set(registry.map((meta) => `${meta.method.toUpperCase()} ${meta.path}`));
+    expect([...dariRegistry].sort()).toEqual([...dariRouter].sort());
   });
 
   test('hanya endpoint publik yang tidak memerlukan autentikasi', () => {

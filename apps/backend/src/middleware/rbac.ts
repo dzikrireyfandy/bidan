@@ -1,6 +1,6 @@
 import ApiError from '../errors/ApiError';
 import { Request, RequestHandler } from 'express';
-import { Peran, SubPeran } from '../types';
+import { Peran, Profile, SubPeran } from '../types';
 
 export const PERAN = {
   SUPERADMIN: 'SUPERADMIN',
@@ -15,10 +15,27 @@ export const SUB_PERAN = {
   RESEPSIONIS: 'RESEPSIONIS'
 } as const satisfies Record<string, SubPeran>;
 
+export const effectiveProfile = (auth: { peran: Peran; subPeran: SubPeran | null }): Profile =>
+  auth.peran === PERAN.STAFF && auth.subPeran ? `STAFF:${auth.subPeran}` : auth.peran;
+
 export const requireRole = (...roles: Peran[]): RequestHandler => {
   return (req, res, next) => {
     if (!req.auth || !roles.includes(req.auth.peran)) {
       return next(ApiError.forbidden(`Akses ditolak untuk peran ${req.auth ? req.auth.peran : 'unknown'}`));
+    }
+    next();
+  };
+};
+
+export const requireProfiles = (...allowedProfiles: Profile[]): RequestHandler => {
+  return (req, res, next) => {
+    if (!req.auth) {
+      return next(ApiError.forbidden('Akses ditolak'));
+    }
+    const profile = effectiveProfile(req.auth);
+    // Profil parent (mis. ADMIN_LOKAL) tetap boleh bila didaftarkan eksplisit.
+    if (!allowedProfiles.includes(profile) && !allowedProfiles.includes(req.auth.peran)) {
+      return next(ApiError.forbidden(`Akses ditolak untuk peran ${profile}`));
     }
     next();
   };
@@ -54,7 +71,9 @@ export const allowSelf = (getOwnerId: (req: Request) => string): RequestHandler 
 export default {
   PERAN,
   SUB_PERAN,
+  effectiveProfile,
   requireRole,
+  requireProfiles,
   requireSubPeran,
   allowSelf
 };

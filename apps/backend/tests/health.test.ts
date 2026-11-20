@@ -28,6 +28,7 @@ describe('Health & Error Handling Integration Tests', () => {
       success: false,
       error: {
         code: 404,
+        errorId: null,
         message: expect.stringContaining('Route not found'),
         details: null
       }

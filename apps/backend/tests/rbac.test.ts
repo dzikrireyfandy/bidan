@@ -41,6 +41,7 @@ describe('RBAC & Auth & Client Context Integration Tests', () => {
       success: false,
       error: {
         code: 401,
+        errorId: 'ERR-AUTH-01',
         message: 'Token tidak ditemukan',
         details: null
       }

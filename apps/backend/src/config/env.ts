@@ -1,20 +1,40 @@
+import path from 'path';
 import dotenv from 'dotenv';
-dotenv.config();
+
+// Muat .env dari cwd (apps/backend) lalu fallback ke root monorepo.
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+
 import { z } from 'zod';
 
+// Jest menjalankan test tanpa file .env; sediakan nilai aman khusus test.
+if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) {
+  process.env.NODE_ENV = 'test';
+  process.env.DB_SERVER ??= 'localhost';
+  process.env.DB_NAME ??= 'MiniWorldRS';
+  process.env.DB_USER ??= 'sa';
+  process.env.DB_PASSWORD ??= 'test-password';
+  process.env.JWT_SECRET ??= 'test-jwt-secret-please-change';
+}
+
 const envSchema = z.object({
-  PORT: z.string().default('3000').transform(val => parseInt(val, 10)),
+  PORT: z.string().default('3000').transform((val) => parseInt(val, 10)),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DB_SERVER: z.string().min(1, 'DB_SERVER is required'),
-  DB_PORT: z.string().default('1433').transform(val => parseInt(val, 10)),
+  DB_PORT: z.string().default('1433').transform((val) => parseInt(val, 10)),
   DB_NAME: z.string().min(1, 'DB_NAME is required'),
   DB_USER: z.string().min(1, 'DB_USER is required'),
   DB_PASSWORD: z.string().min(1, 'DB_PASSWORD is required'),
-  DB_ENCRYPT: z.string().default('false').transform(val => val === 'true'),
+  DB_ENCRYPT: z.string().default('false').transform((val) => val === 'true'),
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
-  JWT_EXPIRES_IN: z.string().default('1d'),
+  JWT_EXPIRES_IN: z.string().default('30m'),
+  ALLOWED_ORIGINS: z.string().default('http://localhost:5173,http://localhost:5174'),
+  RATE_LIMIT_WINDOW_MS: z.string().default('60000').transform((val) => parseInt(val, 10)),
+  RATE_LIMIT_MAX: z.string().default('300').transform((val) => parseInt(val, 10)),
+  AUTH_RATE_LIMIT_MAX: z.string().default('20').transform((val) => parseInt(val, 10)),
+  DEFAULT_UNIT_BIDAN_ID: z.string().uuid().optional(),
   SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.string().optional().transform(val => val ? parseInt(val, 10) : undefined),
+  SMTP_PORT: z.string().optional().transform((val) => (val ? parseInt(val, 10) : undefined)),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional()
 });
@@ -26,6 +46,11 @@ if (!result.success) {
   throw new Error('Invalid environment variables. Check .env configuration.');
 }
 
-export const config = Object.freeze(result.data);
+export const config = Object.freeze({
+  ...result.data,
+  ALLOWED_ORIGINS: result.data.ALLOWED_ORIGINS.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+});
 export type Config = typeof config;
 export default config;

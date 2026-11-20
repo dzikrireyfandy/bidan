@@ -1,6 +1,14 @@
 import db from '../db/pool';
 
 export class KeuanganRepository {
+  async kunjunganExists(kunjunganId: string): Promise<boolean> {
+    const result = await db.query<{ ada: number }>(
+      `SELECT TOP 1 1 AS ada FROM [Kunjungan] WHERE kunjungan_id = @id`,
+      { id: kunjunganId }
+    );
+    return result.recordset.length > 0;
+  }
+
   async findTagihanIdByKunjungan(kunjunganId: string): Promise<string | null> {
     const result = await db.query<{ tagihan_id: string }>(
       `SELECT TOP 1 tagihan_id FROM [Tagihan] WHERE kunjungan_id = @id`,
@@ -13,7 +21,7 @@ export class KeuanganRepository {
     const result = await db.query<{ tagihan_id: string }>(
       `INSERT INTO [Tagihan] (kunjungan_id, total_tagihan, total_dibayar, status, tgl_terbit)
        OUTPUT INSERTED.tagihan_id
-       VALUES (@id, 0, 0, 'BELUM_BAYAR', SYSDATETIME())`,
+       VALUES (@id, 0, 0, 'BELUM_LUNAS', SYSDATETIME())`,
       { id: kunjunganId }
     );
     return result.recordset[0]?.tagihan_id ?? null;

@@ -12,6 +12,9 @@ export class KeuanganService {
   constructor(private readonly repository: KeuanganRepository = new KeuanganRepository()) {}
 
   async detailTagihan(kunjunganId: string): Promise<Record<string, unknown>> {
+    if (!(await this.repository.kunjunganExists(kunjunganId))) {
+      throw ApiError.notFound('Kunjungan tidak ditemukan');
+    }
     let tagihanId = await this.repository.findTagihanIdByKunjungan(kunjunganId);
     if (!tagihanId) {
       tagihanId = await this.repository.createTagihan(kunjunganId);

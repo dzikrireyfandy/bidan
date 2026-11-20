@@ -44,7 +44,7 @@ npm run build:all          # backend + fe-bidan + fe-rs
 | `DB_USER` / `DB_PASSWORD` | — | Kredensial database |
 | `DB_ENCRYPT` | `false` | `true` untuk koneksi terenkripsi |
 | `JWT_SECRET` | — | Wajib; gunakan nilai acak panjang |
-| `JWT_EXPIRES_IN` | `30m` | Durasi token (`30m`, `2h`, `1800`, ...) |
+| `JWT_EXPIRES_IN` | `3h` | Durasi token (`3h`, `2h`, `1800`, ...) |
 | `ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:5174` | Daftar origin CORS dipisah koma |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Jendela rate limit global |
 | `RATE_LIMIT_MAX` | `300` | Maksimum request per jendela (global) |
@@ -135,7 +135,7 @@ Daftar lengkap ada di `src/errors/codes.ts`.
 - **Rate limit**: global `RATE_LIMIT_MAX` dan khusus login/reset `AUTH_RATE_LIMIT_MAX`.
   Respons menyertakan `X-RateLimit-Limit`, `X-RateLimit-Remaining`, dan `Retry-After` saat 429.
   Limiter saat ini **in-memory per proses**; untuk multi-instance gunakan Redis.
-- **JWT**: default 30 menit, memuat `peran`, `subPeran`, `stafId`, `pasienId`, `unitId`.
+- **JWT**: default 3 jam, memuat `peran`, `subPeran`, `stafId`, `pasienId`, `unitId`. Sesi berakhir 3 jam setelah login; frontend tidak memperpanjang token otomatis.
 - **Helmet** aktif; body JSON dibatasi 1 MB.
 - **`X-Client-App`** (`BIDAN` / `RS` / `PORTAL`) dicatat pada request.
 

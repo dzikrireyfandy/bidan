@@ -1,3 +1,5 @@
+use MiniWorldRS
+
 IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE name = 'Seq_NoRM')
 BEGIN
   DECLARE @start BIGINT = (

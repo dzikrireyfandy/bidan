@@ -4,7 +4,7 @@ import { ClientApp } from '../types';
 
 const ALLOWED_APPS: ClientApp[] = ['BIDAN', 'RS', 'PORTAL'];
 
-export const clientContext: RequestHandler = (req, res, next) => {
+export const clientContext: RequestHandler = (req, _res, next) => {
   const clientAppHeader = req.headers['x-client-app'];
 
   if (!clientAppHeader || typeof clientAppHeader !== 'string') {

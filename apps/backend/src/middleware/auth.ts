@@ -40,7 +40,7 @@ export function signToken({ akunId, peran, subPeran = null, stafId = null, pasie
   );
 }
 
-export const authenticate: RequestHandler = (req, res, next) => {
+export const authenticate: RequestHandler = (req, _res, next) => {
   const authHeader = req.headers['authorization'];
   if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
     return next(ApiError.unauthorized('Token tidak ditemukan'));

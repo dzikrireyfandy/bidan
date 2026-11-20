@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import axios from 'axios';
 import { apiClient } from '../api/client';
-import type { ApiErrorBody, ApiSuccess, KontenPublik } from '../api/types';
+import { pesanErrorApi } from '../api/errors';
+import type { ApiSuccess, KontenPublik } from '../api/types';
 
 interface DashboardPageProps {
   onLogout: () => void;
@@ -37,12 +37,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
       const res = await apiClient.post<ApiSuccess<KontenPublik[]>>('/public/konten/list', { limit: 20 });
       setKonten(res.data.success ? res.data.data : []);
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        const body = err.response?.data as ApiErrorBody | undefined;
-        setError(body?.error.message ?? 'Gagal memuat konten dari server.');
-      } else {
-        setError('Gagal terhubung ke server.');
-      }
+      setError(pesanErrorApi(err, 'Gagal memuat konten dari server.'));
       setKonten([]);
     } finally {
       setLoading(false);

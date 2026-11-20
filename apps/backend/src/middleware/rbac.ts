@@ -19,7 +19,7 @@ export const effectiveProfile = (auth: { peran: Peran; subPeran: SubPeran | null
   auth.peran === PERAN.STAFF && auth.subPeran ? `STAFF:${auth.subPeran}` : auth.peran;
 
 export const requireRole = (...roles: Peran[]): RequestHandler => {
-  return (req, res, next) => {
+  return (req, _res, next) => {
     if (!req.auth || !roles.includes(req.auth.peran)) {
       return next(ApiError.forbidden(`Akses ditolak untuk peran ${req.auth ? req.auth.peran : 'unknown'}`));
     }
@@ -28,7 +28,7 @@ export const requireRole = (...roles: Peran[]): RequestHandler => {
 };
 
 export const requireProfiles = (...allowedProfiles: Profile[]): RequestHandler => {
-  return (req, res, next) => {
+  return (req, _res, next) => {
     if (!req.auth) {
       return next(ApiError.forbidden('Akses ditolak'));
     }
@@ -42,7 +42,7 @@ export const requireProfiles = (...allowedProfiles: Profile[]): RequestHandler =
 };
 
 export const requireSubPeran = (...allowedSubPeran: SubPeran[]): RequestHandler => {
-  return (req, res, next) => {
+  return (req, _res, next) => {
     if (!req.auth || req.auth.peran !== PERAN.STAFF || !allowedSubPeran.includes(req.auth.subPeran as SubPeran)) {
       return next(ApiError.forbidden(`Akses ditolak untuk sub-peran staff`));
     }
@@ -53,7 +53,7 @@ export const requireSubPeran = (...allowedSubPeran: SubPeran[]): RequestHandler 
 export const ADMIN_ROLES: Peran[] = [PERAN.SUPERADMIN, PERAN.ADMIN_LOKAL];
 
 export const allowSelf = (getOwnerId: (req: Request) => string): RequestHandler => {
-  return (req, res, next) => {
+  return (req, _res, next) => {
     if (!req.auth) {
       return next(ApiError.forbidden('Akses ditolak'));
     }

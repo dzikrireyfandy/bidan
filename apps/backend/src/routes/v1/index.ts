@@ -15,7 +15,7 @@ import adminRouter from './admin.routes';
 
 const router = Router();
 
-router.get('/', (req, res) => {
+router.get('/', (_req, res) => {
   res.json({
     success: true,
     data: {

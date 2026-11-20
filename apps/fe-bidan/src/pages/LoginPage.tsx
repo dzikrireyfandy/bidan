@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { apiClient } from '../api/client';
-import type { ApiSuccess, LoginResponse, ApiErrorBody } from '../api/types';
-import axios from 'axios';
+import { apiClient, session } from '../api/client';
+import { pesanErrorApi } from '../api/errors';
+import type { ApiSuccess, LoginResponse } from '../api/types';
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
@@ -25,17 +25,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       });
 
       if (response.data.success) {
-        localStorage.setItem('bidan_access_token', response.data.data.token);
+        session.simpanToken(response.data.data.token);
         localStorage.setItem('bidan_user_role', response.data.data.peran);
         onLoginSuccess();
       }
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        const data = err.response?.data as ApiErrorBody | undefined;
-        setError(data?.error?.message || 'Gagal masuk. Periksa kembali kredensial Anda.');
-      } else {
-        setError('Terjadi kesalahan yang tidak diketahui.');
-      }
+      setError(pesanErrorApi(err, 'Gagal masuk. Periksa kembali kredensial Anda.'));
     } finally {
       setLoading(false);
     }

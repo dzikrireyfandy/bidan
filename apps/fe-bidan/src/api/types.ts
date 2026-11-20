@@ -10,6 +10,7 @@ export interface ApiErrorBody {
   success: false;
   error: {
     code: number;
+    errorId: string | null;
     message: string;
     details: unknown;
   };

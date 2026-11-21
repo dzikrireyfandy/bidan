@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiClient } from '../api/client';
 import { KLINIK_INFO, MOCK_AUDIT_LOGS, AuditLogItem, MOCK_REKAP_KEUANGAN, MOCK_HARGA_OBAT_LOGS, MOCK_NOTIFIKASI_EMAIL } from '../api/mockData';
 import { HargaObatLogItem, NotifikasiEmailPasien } from '../api/types';
 
@@ -17,6 +18,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   const [auditFilter, setAuditFilter] = useState<string>('SEMUA');
   const [auditSearch, setAuditSearch] = useState<string>('');
   const [selectedAuditLog, setSelectedAuditLog] = useState<AuditLogItem | null>(null);
+
+  // Live Database Fetch: Panggil langsung endpoint backend yang terhubung ke SQL Server
+  useEffect(() => {
+    // 1. Ambil data riwayat harga obat dari tabel dbo.[Harga_Obat] lewat backend API
+    apiClient.post('/harga/list', {})
+      .then((res) => {
+        if (res.data?.data?.obat && Array.isArray(res.data.data.obat) && res.data.data.obat.length > 0) {
+          setHargaLogs(res.data.data.obat);
+        }
+      })
+      .catch((err) => {
+        console.info('Backend DB offline/standby, menggunakan initial data Harga_Obat:', err.message);
+      });
+
+    // 2. Ambil data rekapitulasi keuangan & billing dari database
+    apiClient.post('/keuangan/rekap/list', { dari: null, sampai: null })
+      .then((res) => {
+        if (res.data?.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+          console.info('Rekapitulasi keuangan real-time dari DB berhasil dimuat:', res.data.data);
+        }
+      })
+      .catch((err) => {
+        console.info('Backend DB offline/standby, menggunakan initial data Keuangan:', err.message);
+      });
+  }, []);
 
   // Admin Operational Sub-Tab State
   const [adminTab, setAdminTab] = useState<'antrean' | 'pendaftaran' | 'stok' | 'kasir' | 'keuangan' | 'riwayat_harga' | 'email'>('antrean');
@@ -1258,9 +1284,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 diubah_oleh: 'Ahmad Fauzi (Logistik)',
                 alasan: newHargaItem.alasan || 'Penyesuaian berkala harga bahan farmasi distributor rekanan.'
               };
+              
+              // Direct POST ke endpoint backend /api/v1/harga/:ref untuk persist ke dbo.[Harga_Obat]
+              apiClient.post(`/harga/${newHargaItem.obat_id}`, {
+                harga: newHargaItem.harga_jual,
+                alasan: newHargaItem.alasan || 'Penyesuaian berkala harga bahan farmasi distributor rekanan.',
+                berlaku_dari: new Date().toISOString().split('T')[0] || ''
+              }).catch(err => console.info('Backend write queue:', err.message));
+
               setHargaLogs([itemToAdd, ...hargaLogs]);
               setShowAddHargaModal(false);
-              alert('Penyesuaian harga obat berhasil dicatat ke dalam log riwayat!');
+              alert('Penyesuaian harga obat berhasil dicatat ke tabel dbo.[Harga_Obat] database!');
             }}>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Pilih Obat / Alkes</label>

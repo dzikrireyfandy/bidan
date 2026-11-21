@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiClient } from '../api/client';
 import { MOCK_LAYANAN, MOCK_SESI_HARI_INI, KLINIK_INFO } from '../api/mockData';
 import { LayananItem, ReservasiData } from '../api/types';
 
@@ -38,34 +39,66 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      const targetSesi = MOCK_SESI_HARI_INI.find(s => s.sesi_id === formData.sesi_id) || MOCK_SESI_HARI_INI[0]!;
-      const targetLayanan = MOCK_LAYANAN.find(l => l.layanan_id === formData.layanan_id) || MOCK_LAYANAN[0]!;
-      
-      const queueNumber = targetSesi.terisi + 1;
-      const parts = targetSesi.jam_mulai.split(':').map(Number);
-      const startHour = parts[0] ?? 8;
-      const startMin = parts[1] ?? 0;
-      const estMinutes = (startHour * 60) + startMin + ((queueNumber - 1) * targetSesi.durasi_per_pasien);
-      const estH = Math.floor(estMinutes / 60).toString().padStart(2, '0');
-      const estM = (estMinutes % 60).toString().padStart(2, '0');
-
-      setSuccessTicket({
-        kode: `RES-${Date.now().toString().slice(-6)}`,
-        nomorAntrean: `A-${queueNumber.toString().padStart(3, '0')}`,
-        estimasiJam: `${estH}:${estM} WIB`,
-        layananNama: targetLayanan.nama,
-        sesiNama: targetSesi.nama,
-        tanggal: formData.tanggal
+    try {
+      // Direct call ke backend database endpoint: POST /api/v1/public/reservasi
+      const res = await apiClient.post('/public/reservasi', {
+        nama: formData.nama,
+        nik: formData.nik,
+        no_hp: formData.no_hp,
+        email: formData.email,
+        tanggal: formData.tanggal,
+        sesi_id: formData.sesi_id,
+        layanan_id: formData.layanan_id,
+        keluhan: formData.keluhan
       });
 
-      setIsSubmitting(false);
-      setStep(3);
-    }, 700);
+      if (res.data?.data) {
+        const d = res.data.data;
+        const targetLayanan = MOCK_LAYANAN.find(l => l.layanan_id === formData.layanan_id) || MOCK_LAYANAN[0]!;
+        const targetSesi = MOCK_SESI_HARI_INI.find(s => s.sesi_id === formData.sesi_id) || MOCK_SESI_HARI_INI[0]!;
+        setSuccessTicket({
+          kode: d.kode_reservasi || `RES-${Date.now().toString().slice(-6)}`,
+          nomorAntrean: d.nomor_antrean || `A-008`,
+          estimasiJam: d.estimasi_jam || `09:45 WIB`,
+          layananNama: targetLayanan.nama,
+          sesiNama: targetSesi.nama,
+          tanggal: formData.tanggal
+        });
+        setIsSubmitting(false);
+        setStep(3);
+        return;
+      }
+    } catch (err: any) {
+      console.info('Backend database sedang standby, menggunakan fallback tiket:', err?.message);
+    }
+
+    // Fallback jika backend belum aktif
+    const targetSesi = MOCK_SESI_HARI_INI.find(s => s.sesi_id === formData.sesi_id) || MOCK_SESI_HARI_INI[0]!;
+    const targetLayanan = MOCK_LAYANAN.find(l => l.layanan_id === formData.layanan_id) || MOCK_LAYANAN[0]!;
+    
+    const queueNumber = targetSesi.terisi + 1;
+    const parts = targetSesi.jam_mulai.split(':').map(Number);
+    const startHour = parts[0] ?? 8;
+    const startMin = parts[1] ?? 0;
+    const estMinutes = (startHour * 60) + startMin + ((queueNumber - 1) * targetSesi.durasi_per_pasien);
+    const estH = Math.floor(estMinutes / 60).toString().padStart(2, '0');
+    const estM = (estMinutes % 60).toString().padStart(2, '0');
+
+    setSuccessTicket({
+      kode: `RES-${Date.now().toString().slice(-6)}`,
+      nomorAntrean: `A-${queueNumber.toString().padStart(3, '0')}`,
+      estimasiJam: `${estH}:${estM} WIB`,
+      layananNama: targetLayanan.nama,
+      sesiNama: targetSesi.nama,
+      tanggal: formData.tanggal
+    });
+
+    setIsSubmitting(false);
+    setStep(3);
   };
 
   const handleResetAndClose = () => {

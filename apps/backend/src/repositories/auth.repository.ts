@@ -43,21 +43,32 @@ export class AuthRepository {
     return result.recordset[0]?.akun_id ?? null;
   }
 
-  async recordFailedAttempt(akunId: string): Promise<void> {
+  async recordFailedAttempt(akunId: string, username: string): Promise<void> {
     await db.query(
       `UPDATE [Akun_Pengguna]
           SET percobaan_gagal = percobaan_gagal + 1,
               terkunci_sampai = CASE WHEN percobaan_gagal + 1 >= 5
                                      THEN DATEADD(MINUTE, 15, SYSDATETIME()) ELSE terkunci_sampai END
         WHERE akun_id = @id`,
-      { id: akunId }
+      { id: akunId },
+      { akunId, userRef: username, keterangan: 'Login Gagal' }
     );
   }
 
-  async recordLoginSuccess(akunId: string): Promise<void> {
+  async recordLoginSuccess(akunId: string, username: string): Promise<void> {
     await db.query(
       `UPDATE [Akun_Pengguna] SET last_login_at = SYSDATETIME(), percobaan_gagal = 0 WHERE akun_id = @id`,
-      { id: akunId }
+      { id: akunId },
+      { akunId, userRef: username, keterangan: 'Login' }
+    );
+  }
+
+  async recordAudit(akunId: string, userRef: string, aksi: string, keterangan: string): Promise<void> {
+    await db.query(
+      `INSERT INTO [Audit_Log] ([akun_id], [aksi], [tabel], [id_baris], [nilai_lama], [nilai_baru], [ip_address], [waktu], [user_ref], [keterangan])
+       VALUES (@akunId, @aksi, N'Akun_Pengguna', @akunId, N'[]', N'[]',
+               COALESCE(CONVERT(VARCHAR(45), CONNECTIONPROPERTY('client_net_address')), ''), SYSDATETIME(), @userRef, @ket)`,
+      { akunId, aksi, userRef, ket: keterangan }
     );
   }
 

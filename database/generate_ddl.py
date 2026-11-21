@@ -136,6 +136,17 @@ AUDIT_TABLES = [
     "Stok_Batch", "Resep", "Pengeluaran_Obat", "Tagihan", "Pembayaran",
 ]
 
+KETERANGAN_KHUSUS = {
+    ("Reservasi", "INSERT"): "Mendaftar Antrian",
+    ("Reservasi", "DELETE"): "Batal Antrian",
+}
+AKSI_LABEL = {"INSERT": "Tambah", "UPDATE": "Ubah", "DELETE": "Hapus"}
+
+
+def _keterangan(name, aksi):
+    return KETERANGAN_KHUSUS.get((name, aksi), f"{AKSI_LABEL[aksi]} {name}")
+
+
 AUDIT_TRIGGER_SQL = """CREATE OR ALTER TRIGGER dbo.[trg_audit_{lower}] ON dbo.[{name}]
 AFTER INSERT, UPDATE, DELETE
 AS
@@ -145,17 +156,20 @@ BEGIN
         CASE WHEN EXISTS (SELECT 1 FROM inserted) AND EXISTS (SELECT 1 FROM deleted) THEN 'UPDATE'
              WHEN EXISTS (SELECT 1 FROM inserted) THEN 'INSERT'
              ELSE 'DELETE' END;
-    INSERT INTO dbo.[Audit_Log] ([akun_id], [aksi], [tabel], [id_baris], [nilai_lama], [nilai_baru], [ip_address], [waktu], [user_ref])
+    INSERT INTO dbo.[Audit_Log] ([akun_id], [aksi], [tabel], [id_baris], [nilai_lama], [nilai_baru], [ip_address], [waktu], [user_ref], [keterangan])
     SELECT
         TRY_CAST(SESSION_CONTEXT(N'akun_id') AS UNIQUEIDENTIFIER),
         @aksi,
         N'{name}',
         CAST(COALESCE((SELECT TOP 1 [{pk}] FROM deleted), (SELECT TOP 1 [{pk}] FROM inserted)) AS VARCHAR(40)),
-        COALESCE((SELECT * FROM deleted FOR JSON PATH), N'[]'),
-        COALESCE((SELECT * FROM inserted FOR JSON PATH), N'[]'),
+        COALESCE((SELECT {json_cols} FROM deleted FOR JSON PATH), N'[]'),
+        COALESCE((SELECT {json_cols} FROM inserted FOR JSON PATH), N'[]'),
         COALESCE(CONVERT(VARCHAR(45), CONNECTIONPROPERTY('client_net_address')), ''),
         SYSDATETIME(),
-        CONVERT(NVARCHAR(50), SESSION_CONTEXT(N'user_ref'));
+        CONVERT(NVARCHAR(50), SESSION_CONTEXT(N'user_ref')),
+        COALESCE(
+            CONVERT(NVARCHAR(200), SESSION_CONTEXT(N'keterangan')),
+            CASE @aksi WHEN 'INSERT' THEN N'{ket_insert}' WHEN 'UPDATE' THEN N'{ket_update}' ELSE N'{ket_delete}' END);
 END
 GO
 """
@@ -178,15 +192,27 @@ def emit_audit_triggers(tables):
         "-- 07_audit_triggers.sql",
         "-- 27 trigger audit per tabel + trg_audit_logs_immutable (lihat TSD 1.3).",
         "-- Diturunkan otomatis oleh generate_ddl.py.",
-        "-- SESSION_CONTEXT('akun_id') & ('user_ref') di-set backend per request.",
+        "-- SESSION_CONTEXT('akun_id'), ('user_ref') & ('keterangan') di-set backend per request.",
         "-- =====================================================================",
         "USE MiniWorldRS;",
         "GO",
         "",
     ]
     for name in AUDIT_TABLES:
-        pk = by_name[name]["cols"][0]["col"]
-        out.append(AUDIT_TRIGGER_SQL.format(lower=name.lower(), name=name, pk=pk))
+        t = by_name[name]
+        pk = t["cols"][0]["col"]
+        json_cols = ", ".join(c["col"] for c in t["cols"] if c["col"] != "password_hash")
+        out.append(
+            AUDIT_TRIGGER_SQL.format(
+                lower=name.lower(),
+                name=name,
+                pk=pk,
+                json_cols=json_cols,
+                ket_insert=_keterangan(name, "INSERT"),
+                ket_update=_keterangan(name, "UPDATE"),
+                ket_delete=_keterangan(name, "DELETE"),
+            )
+        )
     out.append(IMMUTABLE_TRIGGER_SQL)
     return "\n".join(out)
 

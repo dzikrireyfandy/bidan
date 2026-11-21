@@ -177,7 +177,8 @@ export class LaporanRepository {
 
   async listAudit(limit: number, periode: Periode): Promise<Record<string, unknown>[]> {
     const result = await db.query<Record<string, unknown>>(
-      `SELECT TOP (@limit) log_id, akun_id, aksi, tabel, id_baris, ip_address, waktu, user_ref
+      `SELECT TOP (@limit) log_id, akun_id, aksi, tabel, id_baris, ip_address, waktu, user_ref,
+              COALESCE(keterangan, aksi + ' ' + tabel) AS keterangan
          FROM [Audit_Log]
         WHERE (@dari IS NULL OR waktu >= CAST(@dari AS DATE))
           AND (@sampai IS NULL OR waktu < DATEADD(DAY, 1, CAST(@sampai AS DATE)))

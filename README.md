@@ -32,29 +32,7 @@ Build seluruh workspace:
 npm run build:all          # backend + fe-bidan + fe-rs
 ```
 
-## 3. Konfigurasi environment
-
-| Variabel | Default | Keterangan |
-|---|---|---|
-| `PORT` | `3000` | Port HTTP |
-| `NODE_ENV` | `development` | `development` / `production` / `test` |
-| `DB_SERVER` | — | Host SQL Server |
-| `DB_PORT` | `1433` | Port SQL Server |
-| `DB_NAME` | — | Nama database |
-| `DB_USER` / `DB_PASSWORD` | — | Kredensial database |
-| `DB_ENCRYPT` | `false` | `true` untuk koneksi terenkripsi |
-| `JWT_SECRET` | — | Wajib; gunakan nilai acak panjang |
-| `JWT_EXPIRES_IN` | `3h` | Durasi token (`3h`, `2h`, `1800`, ...) |
-| `ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:5174` | Daftar origin CORS dipisah koma |
-| `RATE_LIMIT_WINDOW_MS` | `60000` | Jendela rate limit global |
-| `RATE_LIMIT_MAX` | `300` | Maksimum request per jendela (global) |
-| `AUTH_RATE_LIMIT_MAX` | `20` | Maksimum request login/reset per jendela |
-| `DEFAULT_UNIT_BIDAN_ID` | — | UUID unit bidan default (opsional) |
-| `SMTP_*` | — | Konfigurasi email notifikasi (opsional) |
-
-Saat `NODE_ENV=test`, nilai fallback aman dipakai otomatis sehingga test tidak butuh `.env`.
-
-## 4. Arsitektur
+## 3. Arsitektur
 
 ```
 src/
@@ -76,70 +54,17 @@ Aturan yang dijaga oleh test:
 - Setiap route punya schema validasi; route ber-`:param` wajib punya `params`.
 - Route `auth: true` wajib punya daftar profil.
 
-## 5. Format respons
-
-Sukses:
-
-```json
-{ "success": true, "data": { } }
-```
-
-Sukses dengan metadata:
-
-```json
-{ "success": true, "data": [], "meta": { } }
-```
-
-Gagal:
-
-```json
-{
-  "success": false,
-  "error": {
-    "code": 422,
-    "errorId": "ERR-VAL-01",
-    "message": "Validasi body gagal",
-    "details": [{ "path": ["nik"], "message": "NIK harus 16 digit angka" }]
-  }
-}
-```
-
-`errorId` mengikuti FSD §6. Kode utama:
-
-| errorId | HTTP | Arti |
-|---|---|---|
-| `ERR-VAL-01` | 422 | Validasi request gagal |
-| `ERR-AUTH-01` | 401 | Token tidak ada / tidak valid |
-| `ERR-AUTH-02` | 401 | Username atau kata sandi salah |
-| `ERR-AUTH-03` | 403 | Profil/origin tidak diizinkan |
-| `ERR-AUTH-04` | 401 | Token kedaluwarsa |
-| `ERR-AUTH-05` | 422 | OTP reset tidak valid |
-| `ERR-LOCK-01` | 403 | Akun terkunci sementara |
-| `ERR-RSV-01` | 409 | Kuota sesi penuh |
-| `ERR-RME-04` | 404 | Data pasien tidak ditemukan |
-| `ERR-INV-02` | 404 | Item/obat tidak ditemukan |
-| `ERR-INV-03` | 409 | Duplikat obat |
-| `ERR-FIN-01` | 422 | Pembayaran melebihi sisa tagihan |
-| `ERR-FIN-02` | 404 | Tagihan tidak ditemukan |
-| `ERR-PRC-01` | 422 | Harga/tanggal berlaku tidak valid |
-| `ERR-CNT-01` | 404 | Konten tidak ditemukan |
-| `ERR-RPT-01` | 404 | Data laporan periode kosong |
-| `ERR-SYS-01` | 503 | Database tidak tersedia |
-| `ERR-SYS-03` | 429 | Rate limit terlampaui |
-
-Daftar lengkap ada di `src/errors/codes.ts`.
-
-## 6. Keamanan
+## 4. Keamanan
 
 - **CORS whitelist**: hanya `ALLOWED_ORIGINS`. Origin asing ditolak `403 ERR-AUTH-03` sebelum CORS.
 - **Rate limit**: global `RATE_LIMIT_MAX` dan khusus login/reset `AUTH_RATE_LIMIT_MAX`.
   Respons menyertakan `X-RateLimit-Limit`, `X-RateLimit-Remaining`, dan `Retry-After` saat 429.
   Limiter saat ini **in-memory per proses**; untuk multi-instance gunakan Redis.
-- **JWT**: default 3 jam, memuat `peran`, `subPeran`, `stafId`, `pasienId`, `unitId`. Sesi berakhir 3 jam setelah login; frontend tidak memperpanjang token otomatis.
+- **JWT**: default 30 menit, memuat `peran`, `subPeran`, `stafId`, `pasienId`, `unitId`. Token diperpanjang otomatis bila sisa masa berlaku kurang dari 5 menit (refresh tiap 30 menit), sehingga pengguna tidak logout selama tab aktif.
 - **Helmet** aktif; body JSON dibatasi 1 MB.
 - **`X-Client-App`** (`BIDAN` / `RS` / `PORTAL`) dicatat pada request.
 
-## 7. RBAC
+## 5. RBAC
 
 Profil efektif:
 
@@ -152,7 +77,7 @@ Profil efektif:
 
 Matriks lengkap per endpoint diuji di `tests/rbac-matrix.test.ts` (126 × 6 profil) dan mengikuti TSD §3.2.
 
-## 8. Endpoint per domain
+## 6. Endpoint per domain
 
 | Domain | Jumlah | Prefix utama |
 |---|---|---|
@@ -173,7 +98,7 @@ Matriks lengkap per endpoint diuji di `tests/rbac-matrix.test.ts` (126 × 6 prof
 
 Sumber kebenaran daftar endpoint: `src/routes/v1/_registry.ts` dan `tests/routes-matrix.test.ts`.
 
-## 9. Test
+## 7. Test
 
 ```bash
 npm test
@@ -190,7 +115,7 @@ Cakupan saat ini:
 
 Test memakai mock `db/pool`; integrasi ke SQL Server nyata (migrasi 97 tabel, stored procedure, trigger) belum termasuk dalam suite otomatis.
 
-## 10. Catatan operasional
+## 8. Catatan operasional
 
 - Jalankan `npm run build:backend` sebelum `pm2 reload` (`ecosystem.config.cjs` memakai `dist/`).
 - `BaseRepository` dipertahankan sebagai API internal yang diuji; repository domain memakai SQL khusus.

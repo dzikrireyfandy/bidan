@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiClient, session } from '../api/client';
 import { KLINIK_INFO } from '../constants/klinik';
 import { AuditLogItem, HargaObatLogItem, NotifikasiEmailPasien, RekapKeuanganOperasional } from '../api/types';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 interface DashboardPageProps {
   onLogout: () => void;
@@ -26,13 +27,33 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     // 1. Ambil data riwayat harga obat dari tabel dbo.[Harga_Obat] lewat backend API
     apiClient.post('/harga/list', {})
       .then((res) => {
-        if (res.data?.data?.obat && Array.isArray(res.data.data.obat) && res.data.data.obat.length > 0) {
-          setHargaLogs(res.data.data.obat);
+        const rawList = res.data?.data?.obat;
+        if (Array.isArray(rawList)) {
+          const mapped: HargaObatLogItem[] = rawList.map((item: any, idx: number) => {
+            const jual = Number(item.harga_jual || item.harga || 0);
+            const beli = Number(item.hpp_beli || item.harga_beli || Math.round(jual * 0.7));
+            const marginRp = jual - beli;
+            const marginPersen = beli > 0 ? Math.round((marginRp / beli) * 100) : 0;
+            return {
+              harga_obat_id: String(item.harga_obat_id || `HBT-${idx + 1}`),
+              obat_id: String(item.obat_id || `OBT-${idx + 1}`),
+              kode_obat: String(item.kode || item.kode_obat || `OBT-0${idx + 1}`),
+              nama_obat: String(item.nama_obat || item.nama_generik || item.nama || 'Obat Kebidanan'),
+              kategori: String(item.kategori || 'Farmasi'),
+              hpp_beli: beli,
+              harga_jual: jual,
+              margin_rp: marginRp,
+              margin_persen: marginPersen,
+              berlaku_dari: item.berlaku_dari ? new Date(item.berlaku_dari).toLocaleDateString('id-ID') : 'Aktif',
+              berlaku_sampai: item.berlaku_sampai ? new Date(item.berlaku_sampai).toLocaleDateString('id-ID') : null,
+              diubah_oleh: String(item.diubah_oleh || 'Petugas Farmasi'),
+              alasan: String(item.alasan || 'Penyesuaian berkala tarif klinik')
+            };
+          });
+          setHargaLogs(mapped);
         }
       })
-      .catch((err) => {
-        console.info('Backend DB offline/standby, menggunakan initial data Harga_Obat:', err.message);
-      });
+      .catch(() => {});
 
     // 2. Ambil data rekapitulasi keuangan & billing dari database
     apiClient.post('/keuangan/rekap/list', { dari: null, sampai: null })
@@ -52,16 +73,81 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       })
       .catch(() => {});
 
-    // 3. Ambil data log audit aktivitas sistem
-    apiClient.post('/audit/list', {})
+    // 3. Ambil data log audit aktivitas sistem dari tabel dbo.[Audit_Log]
+    apiClient.post('/audit-logs/list', {})
       .then((res) => {
         if (res.data?.data && Array.isArray(res.data.data)) {
-          setAuditLogs(res.data.data);
+          const mapped: AuditLogItem[] = res.data.data.map((a: any, idx: number) => ({
+            log_id: Number(a.log_id || idx + 1),
+            waktu: a.waktu ? new Date(a.waktu).toLocaleString('id-ID') : 'Baru saja',
+            user_ref: String(a.user_ref || a.akun_id || 'System'),
+            peran: String(a.peran || 'STAF'),
+            aksi: String(a.aksi || 'UPDATE'),
+            tabel: String(a.tabel || 'dbo.[General]'),
+            id_baris: String(a.id_baris || '-'),
+            ip_address: String(a.ip_address || '127.0.0.1'),
+            nilai_lama: String(a.keterangan || '-'),
+            nilai_baru: String(a.keterangan || '-')
+          }));
+          setAuditLogs(mapped);
         }
       })
       .catch(() => {
         setAuditLogs([]);
       });
+
+    // 4. Ambil data antrean / reservasi aktif dari tabel dbo.[Reservasi]
+    apiClient.post('/reservasi/list', {})
+      .then((res) => {
+        if (res.data?.data && Array.isArray(res.data.data)) {
+          const mapped = res.data.data.map((r: any, idx: number) => ({
+            no: r.nomor_antrean ? `A-${String(r.nomor_antrean).padStart(3, '0')}` : `A-${String(idx + 1).padStart(3, '0')}`,
+            nama: r.nama_pasien || 'Ibu Pasien',
+            layanan: 'Pelayanan Kebidanan',
+            sesi: 'Sesi Praktik',
+            jam: r.estimasi_jam ? `${r.estimasi_jam} WIB` : '09:00 WIB',
+            status: r.status === 'SELESAI' ? 'SELESAI' : r.status === 'DIPANGGIL' ? 'DIPANGGIL' : 'MENUNGGU'
+          }));
+          setQueueList(mapped);
+        }
+      })
+      .catch(() => {});
+
+    // 5. Ambil data stok obat & alkes dari tabel dbo.[Obat] dan [Stok_Batch]
+    apiClient.post('/inventaris/list', {})
+      .then((res) => {
+        if (res.data?.data && Array.isArray(res.data.data)) {
+          const mapped = res.data.data.map((o: any) => ({
+            kode: o.kode || o.obat_id,
+            nama: o.nama_dagang ? `${o.nama_dagang} (${o.nama_generik})` : (o.nama_generik || 'Obat Kebidanan'),
+            kategori: o.kategori || 'Obat Esensial',
+            stok: Number(o.stok_total || 0),
+            min: Number(o.stok_minimum || 10),
+            satuan: o.satuan || 'Pcs',
+            status: Number(o.stok_total || 0) <= Number(o.stok_minimum || 10) ? 'MENIPIS' : 'AMAN'
+          }));
+          setStokAlkes(mapped);
+        }
+      })
+      .catch(() => {});
+
+    // 6. Ambil data log email notifikasi pasien dari tabel dbo.[Notifikasi_Log]
+    apiClient.post('/notifikasi/log/list', {})
+      .then((res) => {
+        if (res.data?.data && Array.isArray(res.data.data)) {
+          const mapped: NotifikasiEmailPasien[] = res.data.data.map((n: any) => ({
+            notif_id: String(n.notif_id || n.id),
+            pasien_nama: String(n.tujuan_nama || n.pasien_nama || 'Pasien Bidan Ria'),
+            email_tujuan: String(n.tujuan || n.email || '-'),
+            jenis: n.jenis || 'TIKET_RESERVASI',
+            subjek: String(n.subjek || 'Notifikasi Layanan Klinik'),
+            waktu_kirim: n.waktu_kirim ? new Date(n.waktu_kirim).toLocaleString('id-ID') : 'Terkirim',
+            status: n.status === 'GAGAL' ? 'GAGAL' : n.status === 'ANTRE' ? 'MENUNGGU' : 'TERKIRIM'
+          }));
+          setEmailLogs(mapped);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Admin Operational Sub-Tab State
@@ -83,25 +169,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   const [activeQueueNum, setActiveQueueNum] = useState<string>('A-007');
   const [callAlert, setCallAlert] = useState<string | null>(null);
 
-  // Mock patient queue list for operational dashboard
-  const [queueList, setQueueList] = useState([
-    { no: 'A-006', nama: 'Ny. Siti Aminah', layanan: 'Pemeriksaan Kehamilan (ANC)', sesi: 'Sesi Pagi', jam: '09:00 WIB', status: 'SELESAI' },
-    { no: 'A-007', nama: 'Ny. Ratna Dewi', layanan: 'Pemeriksaan Kehamilan (ANC)', sesi: 'Sesi Pagi', jam: '09:30 WIB', status: 'DIPANGGIL' },
-    { no: 'A-008', nama: 'Ny. Desi Wulandari', layanan: 'Konsultasi KB & Kontrasepsi', sesi: 'Sesi Pagi', jam: '10:00 WIB', status: 'MENUNGGU' },
-    { no: 'A-009', nama: 'Ny. Fitri Handayani', layanan: 'Pelayanan Nifas & Laktasi', sesi: 'Sesi Pagi', jam: '10:30 WIB', status: 'MENUNGGU' },
-    { no: 'A-010', nama: 'Ny. Maya Anggraini', layanan: 'Pemeriksaan Bayi Baru Lahir', sesi: 'Sesi Pagi', jam: '11:00 WIB', status: 'MENUNGGU' },
-  ]);
+  const [queueList, setQueueList] = useState<any[]>([]);
 
-  // Operational Inventory
-  const [stokAlkes] = useState([
-    { kode: 'OBT-OKS-01', nama: 'Oksitosin 10 IU / mL (Injeksi)', kategori: 'Uterotonika', stok: 48, min: 20, satuan: 'Ampul', status: 'AMAN' },
-    { kode: 'OBT-VK1-01', nama: 'Phytomenadione (Vitamin K1 1 mg/0.5mL)', kategori: 'Profilaksis Bayi', stok: 35, min: 15, satuan: 'Ampul', status: 'AMAN' },
-    { kode: 'OBT-SLP-01', nama: 'Salep Mata Gentamisin 1%', kategori: 'Profilaksis Bayi', stok: 24, min: 10, satuan: 'Tube', status: 'AMAN' },
-    { kode: 'ALKES-IUD-01', nama: 'IUD Copper T 380A Steril', kategori: 'Alat Kontrasepsi', stok: 18, min: 8, satuan: 'Set', status: 'AMAN' },
-    { kode: 'ALKES-IMP-01', nama: 'Implan 2 Batang (Levonorgestrel)', kategori: 'Alat Kontrasepsi', stok: 12, min: 5, satuan: 'Set', status: 'AMAN' },
-    { kode: 'OBT-KB-01', nama: 'Depo Progestin 3 Bulanan (Injeksi)', kategori: 'KB Hormonal', stok: 30, min: 12, satuan: 'Vial', status: 'AMAN' },
-    { kode: 'ALKES-SPT-01', nama: 'Spuit 3cc Disposible Steril', kategori: 'Alat Medis Habis Pakai', stok: 120, min: 40, satuan: 'Pcs', status: 'AMAN' },
-  ]);
+  const [stokAlkes, setStokAlkes] = useState<any[]>([]);
 
   const handleCallQueue = (nomor: string, nama: string) => {
     setActiveQueueNum(nomor);
@@ -430,6 +500,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
             ROLE 2: ADMIN OPERASIONAL KLINIK (MODUL SCR-07 LENGKAP)
             ========================================================================= */}
         {currentRole === 'ADMIN_LOKAL' && (
+        <ErrorBoundary fallbackTitle="Kendala Memuat Panel Admin">
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
@@ -635,40 +706,48 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                       </tr>
                     </thead>
                     <tbody>
-                      {queueList.map((q) => (
-                        <tr key={q.no} style={{ borderBottom: '1px solid var(--border-light)', background: q.status === 'DIPANGGIL' ? '#faf5fe' : 'transparent' }}>
-                          <td style={{ padding: '0.75rem 0.65rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>{q.no}</td>
-                          <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{q.nama}</td>
-                          <td style={{ padding: '0.75rem 0.65rem' }}>{q.layanan}</td>
-                          <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{q.sesi}</td>
-                          <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{q.jam}</td>
-                          <td style={{ padding: '0.75rem 0.65rem' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: q.status === 'SELESAI' ? '#dcfce7' : q.status === 'DIPANGGIL' ? '#fef3c7' : '#e2e8f0', color: q.status === 'SELESAI' ? '#166534' : q.status === 'DIPANGGIL' ? '#92400e' : '#475569' }}>
-                              {q.status}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.75rem 0.65rem', textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleCallQueue(q.no, q.nama)}
-                                className="btn btn-secondary"
-                                style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem' }}
-                              >
-                                Panggil
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleFinishQueue(q.no)}
-                                className="btn btn-secondary"
-                                style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', color: '#16a34a' }}
-                              >
-                                Selesai
-                              </button>
-                            </div>
+                      {queueList.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-slate-500)' }}>
+                            Belum ada antrean pasien untuk hari ini di database.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        queueList.map((q) => (
+                          <tr key={q.no} style={{ borderBottom: '1px solid var(--border-light)', background: q.status === 'DIPANGGIL' ? '#faf5fe' : 'transparent' }}>
+                            <td style={{ padding: '0.75rem 0.65rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>{q.no}</td>
+                            <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{q.nama}</td>
+                            <td style={{ padding: '0.75rem 0.65rem' }}>{q.layanan}</td>
+                            <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{q.sesi}</td>
+                            <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{q.jam}</td>
+                            <td style={{ padding: '0.75rem 0.65rem' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: q.status === 'SELESAI' ? '#dcfce7' : q.status === 'DIPANGGIL' ? '#fef3c7' : '#e2e8f0', color: q.status === 'SELESAI' ? '#166534' : q.status === 'DIPANGGIL' ? '#92400e' : '#475569' }}>
+                                {q.status}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.75rem 0.65rem', textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCallQueue(q.no, q.nama)}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem' }}
+                                >
+                                  Panggil
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleFinishQueue(q.no)}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', color: '#16a34a' }}
+                                >
+                                  Selesai
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -806,21 +885,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     </tr>
                   </thead>
                   <tbody>
-                    {stokAlkes.map((s) => (
-                      <tr key={s.kode} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                        <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>{s.kode}</td>
-                        <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{s.nama}</td>
-                        <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{s.kategori}</td>
-                        <td style={{ padding: '0.75rem', fontWeight: 800, fontSize: '0.95rem', color: '#16a34a' }}>{s.stok}</td>
-                        <td style={{ padding: '0.75rem', color: 'var(--color-slate-500)' }}>{s.min}</td>
-                        <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{s.satuan}</td>
-                        <td style={{ padding: '0.75rem' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: '#dcfce7', color: '#166534' }}>
-                            {s.status}
-                          </span>
+                    {stokAlkes.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-slate-500)' }}>
+                          Belum ada data stok obat di inventori database.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      stokAlkes.map((s) => (
+                        <tr key={s.kode} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                          <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>{s.kode}</td>
+                          <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{s.nama}</td>
+                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{s.kategori}</td>
+                          <td style={{ padding: '0.75rem', fontWeight: 800, fontSize: '0.95rem', color: '#16a34a' }}>{s.stok}</td>
+                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-500)' }}>{s.min}</td>
+                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{s.satuan}</td>
+                          <td style={{ padding: '0.75rem' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: s.status === 'AMAN' ? '#dcfce7' : '#fee2e2', color: s.status === 'AMAN' ? '#166534' : '#991b1b' }}>
+                              {s.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -857,26 +944,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                   <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #16a34a' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Total Pendapatan (Inflow Kasir &amp; Layanan)</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a', margin: '0.2rem 0' }}>Rp {rekapKeuangan.total_pendapatan.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a', margin: '0.2rem 0' }}>Rp {(Number(rekapKeuangan.total_pendapatan) || 0).toLocaleString('id-ID')}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-600)' }}>12 Pasien Terlayani Sesi Hari Ini</div>
                   </div>
 
                   <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #dc2626' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>HPP Bahan Obat &amp; Alkes Kebidanan</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626', margin: '0.2rem 0' }}>Rp {rekapKeuangan.total_pengeluaran_obat.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626', margin: '0.2rem 0' }}>Rp {(Number(rekapKeuangan.total_pengeluaran_obat) || 0).toLocaleString('id-ID')}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-600)' }}>Pengeluaran Farmasi, IUD, Oksitosin</div>
                   </div>
 
                   <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #f59e0b' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Beban Operasional &amp; Sanitasi Medis</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f59e0b', margin: '0.2rem 0' }}>Rp {rekapKeuangan.beban_operasional_klinik.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f59e0b', margin: '0.2rem 0' }}>Rp {(Number(rekapKeuangan.beban_operasional_klinik) || 0).toLocaleString('id-ID')}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-600)' }}>Listrik, Air Steril, Limbah Medis B3</div>
                   </div>
 
                   <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid var(--color-primary)' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Laba Bersih Operasional (Net Profit)</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>Rp {rekapKeuangan.laba_bersih.toLocaleString('id-ID')}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 700 }}>Margin Bersih: {rekapKeuangan.margin_bersih_persen}%</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>Rp {(Number(rekapKeuangan.laba_bersih) || 0).toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 700 }}>Margin Bersih: {Number(rekapKeuangan.margin_bersih_persen) || 0}%</div>
                   </div>
                 </div>
 
@@ -995,26 +1082,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                       </tr>
                     </thead>
                     <tbody>
-                      {hargaLogs.map((h) => (
-                        <tr key={h.harga_obat_id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                          <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>{h.harga_obat_id}</td>
-                          <td style={{ padding: '0.75rem' }}>
-                            <div style={{ fontWeight: 700, color: 'var(--color-slate-900)' }}>{h.nama_obat}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>{h.kode_obat} • {h.kategori}</div>
-                          </td>
-                          <td style={{ padding: '0.75rem', color: '#dc2626', fontWeight: 600 }}>Rp {h.hpp_beli.toLocaleString('id-ID')}</td>
-                          <td style={{ padding: '0.75rem', color: '#16a34a', fontWeight: 700 }}>Rp {h.harga_jual.toLocaleString('id-ID')}</td>
-                          <td style={{ padding: '0.75rem' }}>
-                            <div style={{ fontWeight: 700 }}>Rp {h.margin_rp.toLocaleString('id-ID')}</div>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16a34a' }}>{h.margin_persen}%</span>
-                          </td>
-                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{h.berlaku_dari}</td>
-                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{h.diubah_oleh}</td>
-                          <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--color-slate-700)', lineHeight: 1.4, background: '#fafaf9', borderRadius: '6px' }}>
-                            {h.alasan}
+                      {hargaLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-slate-500)' }}>
+                            Belum ada riwayat penyesuaian harga obat di database. Klik tombol "+ Catat Penyesuaian Harga Baru" untuk menambah entri.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        hargaLogs.map((h) => (
+                          <tr key={h.harga_obat_id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                            <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>{h.harga_obat_id}</td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <div style={{ fontWeight: 700, color: 'var(--color-slate-900)' }}>{h.nama_obat || 'Obat Kebidanan'}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>{h.kode_obat || '-'} • {h.kategori || 'Farmasi'}</div>
+                            </td>
+                            <td style={{ padding: '0.75rem', color: '#dc2626', fontWeight: 600 }}>Rp {(Number(h.hpp_beli) || 0).toLocaleString('id-ID')}</td>
+                            <td style={{ padding: '0.75rem', color: '#16a34a', fontWeight: 700 }}>Rp {(Number(h.harga_jual) || 0).toLocaleString('id-ID')}</td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <div style={{ fontWeight: 700 }}>Rp {(Number(h.margin_rp) || 0).toLocaleString('id-ID')}</div>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16a34a' }}>{Number(h.margin_persen) || 0}%</span>
+                            </td>
+                            <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{h.berlaku_dari || '-'}</td>
+                            <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{h.diubah_oleh || '-'}</td>
+                            <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--color-slate-700)', lineHeight: 1.4, background: '#fafaf9', borderRadius: '6px' }}>
+                              {h.alasan || '-'}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1078,42 +1173,51 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                       </tr>
                     </thead>
                     <tbody>
-                      {emailLogs.map((e) => (
-                        <tr key={e.notif_id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                          <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>{e.notif_id}</td>
-                          <td style={{ padding: '0.75rem', fontWeight: 700 }}>{e.pasien_nama}</td>
-                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-700)' }}>{e.email_tujuan}</td>
-                          <td style={{ padding: '0.75rem' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '6px', background: '#e0e7ff', color: '#3730a3' }}>
-                              {e.jenis}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-800)' }}>{e.subjek}</td>
-                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-500)', fontSize: '0.8rem' }}>{e.waktu_kirim}</td>
-                          <td style={{ padding: '0.75rem' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: e.status === 'TERKIRIM' ? '#dcfce7' : '#fef3c7', color: e.status === 'TERKIRIM' ? '#166534' : '#92400e' }}>
-                              {e.status}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right' }}>
-                            <button
-                              type="button"
-                              onClick={() => setPreviewEmail(e)}
-                              className="btn btn-secondary"
-                              style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
-                            >
-                              Preview Email
-                            </button>
+                      {emailLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-slate-500)' }}>
+                            Belum ada riwayat notifikasi email di database.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        emailLogs.map((e) => (
+                          <tr key={e.notif_id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                            <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>{e.notif_id}</td>
+                            <td style={{ padding: '0.75rem', fontWeight: 700 }}>{e.pasien_nama}</td>
+                            <td style={{ padding: '0.75rem', color: 'var(--color-slate-700)' }}>{e.email_tujuan}</td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '6px', background: '#e0e7ff', color: '#3730a3' }}>
+                                {e.jenis}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.75rem', color: 'var(--color-slate-800)' }}>{e.subjek}</td>
+                            <td style={{ padding: '0.75rem', color: 'var(--color-slate-500)', fontSize: '0.8rem' }}>{e.waktu_kirim}</td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: e.status === 'TERKIRIM' ? '#dcfce7' : '#fef3c7', color: e.status === 'TERKIRIM' ? '#166534' : '#92400e' }}>
+                                {e.status}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewEmail(e)}
+                                className="btn btn-secondary"
+                                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                              >
+                                Preview Email
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
               </div>
             )}
           </div>
-        )}
+        </ErrorBoundary>
+      )}
 
         {/* =========================================================================
             ROLE 3: DOKTER / BIDAN RIA — REKAM MEDIS ELEKTRONIK (RME)
@@ -1306,7 +1410,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
               };
               
               // Direct POST ke endpoint backend /api/v1/harga/:ref untuk persist ke dbo.[Harga_Obat]
-              apiClient.post(`/harga/${newHargaItem.obat_id}`, {
+              apiClient.post(`/harga/OBAT/${newHargaItem.obat_id}`, {
                 harga: newHargaItem.harga_jual,
                 alasan: newHargaItem.alasan || 'Penyesuaian berkala harga bahan farmasi distributor rekanan.',
                 berlaku_dari: new Date().toISOString().split('T')[0] || ''

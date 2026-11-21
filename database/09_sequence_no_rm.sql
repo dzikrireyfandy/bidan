@@ -1,0 +1,9 @@
+IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE name = 'Seq_NoRM')
+BEGIN
+  DECLARE @start BIGINT = (
+    SELECT ISNULL(MAX(CAST(no_rm AS INT)), 0) + 1
+      FROM [Pasien] WHERE ISNUMERIC(no_rm) = 1 AND CAST(no_rm AS INT) < 1000000
+  );
+  EXEC('CREATE SEQUENCE dbo.Seq_NoRM AS BIGINT START WITH ' + @start + ' INCREMENT BY 1 CACHE 20');
+END
+GO

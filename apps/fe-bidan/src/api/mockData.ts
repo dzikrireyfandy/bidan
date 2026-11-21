@@ -349,3 +349,107 @@ export const MOCK_AUDIT_LOGS: AuditLogItem[] = [
     nilai_baru: '{"imd": true, "vit_k1": true, "salep_mata": true, "bb_lahir": 3200, "pb_lahir": 49}'
   }
 ];
+
+
+export const MOCK_REKAP_KEUANGAN: import('./types').RekapKeuanganOperasional = {
+  periode: 'Hari Ini (Sesi Pagi & Sore)',
+  total_pendapatan: 4850000,
+  total_pengeluaran_obat: 1920000,
+  beban_operasional_klinik: 450000,
+  laba_bersih: 2480000,
+  margin_bersih_persen: 51.13,
+  analisis_fluktuasi: 'Margin laba operasional tetap kuat di level 51.1% meskipun terjadi lonjakan HPP bahan obat impor Oksitosin (+18.9%) dan IUD (+10.3%). Peningkatan volume layanan persalinan normal dan efisiensi paket asuhan kebidanan berhasil mengimbangi kenaikan harga bahan baku farmasi.'
+};
+
+export const MOCK_HARGA_OBAT_LOGS: import('./types').HargaObatLogItem[] = [
+  {
+    harga_obat_id: 'HRO-2026-0091',
+    obat_id: 'OBT-OKS-01',
+    kode_obat: 'OBT-OKS-01',
+    nama_obat: 'Oksitosin 10 IU / mL (Injeksi)',
+    kategori: 'Uterotonika',
+    hpp_beli: 22000,
+    harga_jual: 35000,
+    margin_rp: 13000,
+    margin_persen: 37.14,
+    berlaku_dari: '2026-10-01',
+    berlaku_sampai: null,
+    diubah_oleh: 'Ahmad Fauzi (Logistik)',
+    alasan: 'Kenaikan HPP bahan baku pabrik farmasi Bio Farma sebesar 18.9% (dari Rp 18.500 menjadi Rp 22.000) akibat fluktuasi bahan baku impor. Penyesuaian harga jual dilakukan agar ketersediaan stok gawat darurat persalinan 24 jam tetap terjamin.'
+  },
+  {
+    harga_obat_id: 'HRO-2026-0088',
+    obat_id: 'ALKES-IUD-01',
+    kode_obat: 'ALKES-IUD-01',
+    nama_obat: 'IUD Copper T 380A Steril',
+    kategori: 'Alat Kontrasepsi',
+    hpp_beli: 160000,
+    harga_jual: 250000,
+    margin_rp: 90000,
+    margin_persen: 36.0,
+    berlaku_dari: '2026-09-15',
+    berlaku_sampai: null,
+    diubah_oleh: 'Ahmad Fauzi (Logistik)',
+    alasan: 'Penyesuaian biaya logistik jalur dingin dan distributor alkes steril nasional. Margin laba dipertahankan stabil pada rentang 36%.'
+  },
+  {
+    harga_obat_id: 'HRO-2026-0085',
+    obat_id: 'OBT-VK1-01',
+    kode_obat: 'OBT-VK1-01',
+    nama_obat: 'Vitamin K1 1 mg (Injeksi BBL)',
+    kategori: 'Profilaksis Bayi',
+    hpp_beli: 12000,
+    harga_jual: 20000,
+    margin_rp: 8000,
+    margin_persen: 40.0,
+    berlaku_dari: '2026-08-01',
+    berlaku_sampai: null,
+    diubah_oleh: 'Ahmad Fauzi (Logistik)',
+    alasan: 'Harga stabil program profilaksis neonatal BBL, pasokan lancar dari PBF rekanan.'
+  },
+  {
+    harga_obat_id: 'HRO-2026-0082',
+    obat_id: 'OBT-GNT-01',
+    kode_obat: 'OBT-GNT-01',
+    nama_obat: 'Salep Mata Gentamisin 1%',
+    kategori: 'Profilaksis Bayi',
+    hpp_beli: 11500,
+    harga_jual: 18000,
+    margin_rp: 6500,
+    margin_persen: 36.11,
+    berlaku_dari: '2026-11-01',
+    berlaku_sampai: null,
+    diubah_oleh: 'Ahmad Fauzi (Logistik)',
+    alasan: 'Kenaikan HPP distributor lokal dari Rp 9.500 ke Rp 11.500 karena sertifikasi kemasan steril tube baru.'
+  }
+];
+
+export const MOCK_NOTIFIKASI_EMAIL: import('./types').NotifikasiEmailPasien[] = [
+  {
+    notif_id: 'EML-2026-0099',
+    pasien_nama: 'Ny. Ratna Sari',
+    email_tujuan: 'ratna.sari@gmail.com',
+    jenis: 'TIKET_RESERVASI',
+    subjek: 'Tiket Antrean A-007 - Praktik Mandiri Bidan Ria Indrasti',
+    waktu_kirim: '2026-11-21 08:15:22',
+    status: 'TERKIRIM'
+  },
+  {
+    notif_id: 'EML-2026-0098',
+    pasien_nama: 'Ny. Dewi Lestari',
+    email_tujuan: 'dewi.lestari@yahoo.com',
+    jenis: 'TIKET_RESERVASI',
+    subjek: 'Tiket Antrean A-008 - Praktik Mandiri Bidan Ria Indrasti',
+    waktu_kirim: '2026-11-21 09:12:45',
+    status: 'TERKIRIM'
+  },
+  {
+    notif_id: 'EML-2026-0097',
+    pasien_nama: 'Ny. Ratna Dewi',
+    email_tujuan: 'ratna.dewi@gmail.com',
+    jenis: 'PENGINGAT_KONTROL_H1',
+    subjek: 'Pengingat Kontrol Kehamilan Trimester 3 (H-1) - Bidan Ria',
+    waktu_kirim: '2026-11-20 09:00:00',
+    status: 'TERKIRIM'
+  }
+];

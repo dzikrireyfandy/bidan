@@ -2527,6 +2527,15 @@
             <button type="button" onclick="switchAdminSubTab('kasir')" id="adminSubTabKasir" style="padding: 0.45rem 0.85rem; border-radius: 7px; font-size: 0.8125rem; font-weight: 700; border: none; cursor: pointer; background: transparent; color: var(--slate-700);">
               Billing Kasir
             </button>
+            <button type="button" onclick="switchAdminSubTab('keuangan')" id="adminSubTabKeuangan" style="padding: 0.45rem 0.85rem; border-radius: 7px; font-size: 0.8125rem; font-weight: 700; border: none; cursor: pointer; background: transparent; color: var(--slate-700);">
+              Rekap Keuangan
+            </button>
+            <button type="button" onclick="switchAdminSubTab('riwayatHarga')" id="adminSubTabRiwayatHarga" style="padding: 0.45rem 0.85rem; border-radius: 7px; font-size: 0.8125rem; font-weight: 700; border: none; cursor: pointer; background: transparent; color: var(--slate-700);">
+              Riwayat Harga (Harga_Obat)
+            </button>
+            <button type="button" onclick="switchAdminSubTab('email')" id="adminSubTabEmail" style="padding: 0.45rem 0.85rem; border-radius: 7px; font-size: 0.8125rem; font-weight: 700; border: none; cursor: pointer; background: transparent; color: var(--slate-700);">
+              Notifikasi Email
+            </button>
           </div>
         </div>
 
@@ -2656,8 +2665,22 @@
                 </select>
               </div>
             </div>
+            <div style="margin-bottom: 1rem;">
+              <label style="display: block; font-size: 0.8125rem; font-weight: 700; margin-bottom: 0.35rem;">
+                Alamat Email Pasien (Opsional, untuk E-Tiket &amp; Pengingat Kontrol H-1)
+              </label>
+              <input type="email" id="walkinEmailPreview" placeholder="Contoh: dewi.lestari@gmail.com" style="width: 100%; padding: 0.65rem; border-radius: 8px; border: 1px solid var(--border-medium);" />
+            </div>
+
+            <div style="margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" id="walkinEmailCheckPreview" checked style="width: 16px; height: 16px; accent-color: var(--primary);" />
+              <label for="walkinEmailCheckPreview" style="font-size: 0.8125rem; font-weight: 600; color: var(--slate-700); cursor: pointer;">
+                Kirimkan E-Tiket antrean &amp; konfirmasi otomatis ke email pasien via SMTP Mailer
+              </label>
+            </div>
+
             <button type="submit" class="btn btn-primary btn-shimmer" style="width: 100%; padding: 0.75rem; font-weight: 700;">
-              Terbitkan Nomor Antrean Pasien
+              Terbitkan Nomor Antrean &amp; Kirim E-Tiket
             </button>
           </form>
         </div>
@@ -2730,6 +2753,293 @@
               <div style="font-size: 1.15rem; font-weight: 700; color: var(--primary-dark); margin: 0.2rem 0;">QRIS (60%) | Tunai (40%)</div>
               <div style="font-size: 0.75rem; color: var(--slate-500);">Terintegrasi MiniWorldRS</div>
             </div>
+          </div>
+        </div>
+
+        <!-- SUB-TAB 5: REKAP KEUANGAN & MARGIN -->
+        <div id="adminSecKeuangan" style="display: none;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: #ffffff; padding: 1.25rem; border-radius: 14px; border: 1px solid var(--border-medium); border-left: 4px solid #16a34a;">
+              <div style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">Total Pendapatan (Inflow Kasir &amp; Layanan)</div>
+              <div style="font-size: 1.75rem; font-weight: 800; color: #16a34a; margin: 0.2rem 0;">Rp 4.850.000</div>
+              <div style="font-size: 0.75rem; color: var(--slate-600);">12 Pasien Terlayani Sesi Hari Ini</div>
+            </div>
+
+            <div style="background: #ffffff; padding: 1.25rem; border-radius: 14px; border: 1px solid var(--border-medium); border-left: 4px solid #dc2626;">
+              <div style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">HPP Bahan Obat &amp; Alkes Kebidanan</div>
+              <div style="font-size: 1.75rem; font-weight: 800; color: #dc2626; margin: 0.2rem 0;">Rp 1.920.000</div>
+              <div style="font-size: 0.75rem; color: var(--slate-600);">Pengeluaran Farmasi, IUD, Oksitosin</div>
+            </div>
+
+            <div style="background: #ffffff; padding: 1.25rem; border-radius: 14px; border: 1px solid var(--border-medium); border-left: 4px solid #f59e0b;">
+              <div style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">Beban Operasional &amp; Sanitasi Medis</div>
+              <div style="font-size: 1.75rem; font-weight: 800; color: #f59e0b; margin: 0.2rem 0;">Rp 450.000</div>
+              <div style="font-size: 0.75rem; color: var(--slate-600);">Listrik, Air Steril, Limbah Medis B3</div>
+            </div>
+
+            <div style="background: #ffffff; padding: 1.25rem; border-radius: 14px; border: 1px solid var(--border-medium); border-left: 4px solid var(--primary);">
+              <div style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">Laba Bersih Operasional (Net Profit)</div>
+              <div style="font-size: 1.75rem; font-weight: 800; color: var(--primary-dark); margin: 0.2rem 0;">Rp 2.480.000</div>
+              <div style="font-size: 0.75rem; color: #16a34a; font-weight: 700;">Margin Bersih: 51.13%</div>
+            </div>
+          </div>
+
+          <!-- Card Analisis Fluktuasi HPP Bahan Obat -->
+          <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 14px; padding: 1.25rem; margin-bottom: 1.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: #1e3a8a; margin: 0;">
+                Analisis Fluktuasi Margin &amp; Dinamika Kenaikan Bahan Obat (Justifikasi Laba)
+              </h4>
+            </div>
+            <p style="font-size: 0.85rem; color: #1e40af; line-height: 1.6; margin: 0;">
+              Margin laba operasional tetap kuat di level 51.1% meskipun terjadi lonjakan HPP bahan obat impor Oksitosin (+18.9%) dan IUD (+10.3%). Peningkatan volume layanan persalinan normal dan efisiensi paket asuhan kebidanan berhasil mengimbangi kenaikan harga bahan baku farmasi.
+            </p>
+            <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed #93c5fd; font-size: 0.8rem; color: #1d4ed8; display: flex; gap: 1.5rem; flex-wrap: wrap;">
+              <span>• <strong>Faktor Kunci 1:</strong> Paket persalinan normal menyumbang 45.3% laba kotor melalui jasa kebidanan mandiri.</span>
+              <span>• <strong>Faktor Kunci 2:</strong> Pengadaan batch awal Oksitosin sebelum lonjakan distributor menahan beban HPP obat di bawah 40%.</span>
+            </div>
+          </div>
+
+          <!-- Breakdown Tabel Layanan -->
+          <div style="background: #ffffff; border-radius: 16px; border: 1px solid var(--border-medium); padding: 1.5rem;">
+            <h4 style="font-size: 1.1rem; font-weight: 800; color: var(--slate-900); margin-bottom: 0.35rem;">
+              Rincian Arus Pendapatan per Pos Layanan Asuhan Kebidanan
+            </h4>
+            <p style="font-size: 0.8125rem; color: var(--slate-500); margin-bottom: 1.25rem;">
+              Perbandingan pendapatan bruto, alokasi HPP bahan obat/alkes, dan laba kontribusi per divisi.
+            </p>
+
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+              <thead>
+                <tr style="background: #f8fafc; border-bottom: 2px solid var(--border-light); color: var(--slate-600);">
+                  <th style="padding: 0.75rem;">Pos Layanan Medis</th>
+                  <th style="padding: 0.75rem;">Volume Pasien</th>
+                  <th style="padding: 0.75rem;">Pendapatan Bruto</th>
+                  <th style="padding: 0.75rem;">HPP Bahan Medis/Obat</th>
+                  <th style="padding: 0.75rem;">Margin Kontribusi</th>
+                  <th style="padding: 0.75rem;">Persentase Margin</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700;">Pemeriksaan Kehamilan (ANC Terpadu)</td>
+                  <td style="padding: 0.75rem;">5 Kunjungan</td>
+                  <td style="padding: 0.75rem; font-weight: 700; color: #16a34a;">Rp 1.250.000</td>
+                  <td style="padding: 0.75rem; color: #dc2626;">Rp 280.000</td>
+                  <td style="padding: 0.75rem; font-weight: 700;">Rp 970.000</td>
+                  <td style="padding: 0.75rem;"><span style="padding: 0.2rem 0.5rem; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.75rem;">77.6%</span></td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700;">Paket Asuhan Persalinan Normal 24 Jam</td>
+                  <td style="padding: 0.75rem;">1 Kelahiran</td>
+                  <td style="padding: 0.75rem; font-weight: 700; color: #16a34a;">Rp 2.200.000</td>
+                  <td style="padding: 0.75rem; color: #dc2626;">Rp 980.000</td>
+                  <td style="padding: 0.75rem; font-weight: 700;">Rp 1.220.000</td>
+                  <td style="padding: 0.75rem;"><span style="padding: 0.2rem 0.5rem; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.75rem;">55.4%</span></td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700;">Pelayanan Kontrasepsi (IUD / Implan / Suntik)</td>
+                  <td style="padding: 0.75rem;">3 Pasien</td>
+                  <td style="padding: 0.75rem; font-weight: 700; color: #16a34a;">Rp 900.000</td>
+                  <td style="padding: 0.75rem; color: #dc2626;">Rp 480.000</td>
+                  <td style="padding: 0.75rem; font-weight: 700;">Rp 420.000</td>
+                  <td style="padding: 0.75rem;"><span style="padding: 0.2rem 0.5rem; border-radius: 6px; background: #fef3c7; color: #92400e; font-weight: 700; font-size: 0.75rem;">46.7%</span></td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700;">Imunisasi &amp; Perawatan Bayi Baru Lahir</td>
+                  <td style="padding: 0.75rem;">3 Bayi</td>
+                  <td style="padding: 0.75rem; font-weight: 700; color: #16a34a;">Rp 500.000</td>
+                  <td style="padding: 0.75rem; color: #dc2626;">Rp 180.000</td>
+                  <td style="padding: 0.75rem; font-weight: 700;">Rp 320.000</td>
+                  <td style="padding: 0.75rem;"><span style="padding: 0.2rem 0.5rem; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.75rem;">64.0%</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- SUB-TAB 6: RIWAYAT HARGA OBAT (Harga_Obat) -->
+        <div id="adminSecRiwayatHarga" style="display: none; background: #ffffff; border-radius: 16px; border: 1px solid var(--border-medium); padding: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+            <div>
+              <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--slate-900);">
+                Log Riwayat Harga Jual Obat &amp; Fluktuasi HPP (Tabel dbo.[Harga_Obat])
+              </h3>
+              <p style="font-size: 0.8125rem; color: var(--slate-500);">
+                Audit trail penyesuaian harga obat, margin keuntungan, dan dokumentasi alasan kenaikan bahan baku farmasi.
+              </p>
+            </div>
+            <button
+              type="button"
+              onclick="alert('Membuka formulir pencatatan penyesuaian harga obat baru ke tabel dbo.[Harga_Obat].')"
+              class="btn btn-primary btn-shimmer"
+              style="font-size: 0.8125rem;"
+            >
+              + Catat Penyesuaian Harga Baru
+            </button>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+              <thead>
+                <tr style="background: #f8fafc; border-bottom: 2px solid var(--border-light); color: var(--slate-600);">
+                  <th style="padding: 0.75rem;">ID Log</th>
+                  <th style="padding: 0.75rem;">Nama Obat / Alkes</th>
+                  <th style="padding: 0.75rem;">HPP Beli</th>
+                  <th style="padding: 0.75rem;">Harga Jual</th>
+                  <th style="padding: 0.75rem;">Margin (Rp / %)</th>
+                  <th style="padding: 0.75rem;">Berlaku Mulai</th>
+                  <th style="padding: 0.75rem;">Petugas Logistik</th>
+                  <th style="padding: 0.75rem; min-width: 240px;">Alasan / Justifikasi Fluktuasi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700; color: var(--primary-dark);">HRO-2026-0091</td>
+                  <td style="padding: 0.75rem;">
+                    <div style="font-weight: 700; color: var(--slate-900);">Oksitosin 10 IU / mL (Injeksi)</div>
+                    <div style="font-size: 0.75rem; color: var(--slate-500);">OBT-OKS-01 • Uterotonika</div>
+                  </td>
+                  <td style="padding: 0.75rem; color: #dc2626; font-weight: 600;">Rp 22.000</td>
+                  <td style="padding: 0.75rem; color: #16a34a; font-weight: 700;">Rp 35.000</td>
+                  <td style="padding: 0.75rem;">
+                    <div style="font-weight: 700;">Rp 13.000</div>
+                    <span style="font-size: 0.72rem; font-weight: 700; color: #16a34a;">37.14%</span>
+                  </td>
+                  <td style="padding: 0.75rem; color: var(--slate-600);">2026-10-01</td>
+                  <td style="padding: 0.75rem; color: var(--slate-600);">Ahmad Fauzi (Logistik)</td>
+                  <td style="padding: 0.75rem; font-size: 0.8rem; color: var(--slate-700); line-height: 1.4; background: #fafaf9; border-radius: 6px;">
+                    Kenaikan HPP bahan baku pabrik farmasi Bio Farma sebesar 18.9% (dari Rp 18.500 menjadi Rp 22.000) akibat fluktuasi bahan baku impor. Penyesuaian harga jual dilakukan agar ketersediaan stok gawat darurat persalinan 24 jam tetap terjamin.
+                  </td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700; color: var(--primary-dark);">HRO-2026-0088</td>
+                  <td style="padding: 0.75rem;">
+                    <div style="font-weight: 700; color: var(--slate-900);">IUD Copper T 380A Steril</div>
+                    <div style="font-size: 0.75rem; color: var(--slate-500);">ALKES-IUD-01 • Alat Kontrasepsi</div>
+                  </td>
+                  <td style="padding: 0.75rem; color: #dc2626; font-weight: 600;">Rp 160.000</td>
+                  <td style="padding: 0.75rem; color: #16a34a; font-weight: 700;">Rp 250.000</td>
+                  <td style="padding: 0.75rem;">
+                    <div style="font-weight: 700;">Rp 90.000</div>
+                    <span style="font-size: 0.72rem; font-weight: 700; color: #16a34a;">36.0%</span>
+                  </td>
+                  <td style="padding: 0.75rem; color: var(--slate-600);">2026-09-15</td>
+                  <td style="padding: 0.75rem; color: var(--slate-600);">Ahmad Fauzi (Logistik)</td>
+                  <td style="padding: 0.75rem; font-size: 0.8rem; color: var(--slate-700); line-height: 1.4; background: #fafaf9; border-radius: 6px;">
+                    Penyesuaian biaya logistik jalur dingin dan distributor alkes steril nasional. Margin laba dipertahankan stabil pada rentang 36%.
+                  </td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700; color: var(--primary-dark);">HRO-2026-0085</td>
+                  <td style="padding: 0.75rem;">
+                    <div style="font-weight: 700; color: var(--slate-900);">Vitamin K1 1 mg (Injeksi BBL)</div>
+                    <div style="font-size: 0.75rem; color: var(--slate-500);">OBT-VK1-01 • Profilaksis Bayi</div>
+                  </td>
+                  <td style="padding: 0.75rem; color: #dc2626; font-weight: 600;">Rp 12.000</td>
+                  <td style="padding: 0.75rem; color: #16a34a; font-weight: 700;">Rp 20.000</td>
+                  <td style="padding: 0.75rem;">
+                    <div style="font-weight: 700;">Rp 8.000</div>
+                    <span style="font-size: 0.72rem; font-weight: 700; color: #16a34a;">40.0%</span>
+                  </td>
+                  <td style="padding: 0.75rem; color: var(--slate-600);">2026-08-01</td>
+                  <td style="padding: 0.75rem; color: var(--slate-600);">Ahmad Fauzi (Logistik)</td>
+                  <td style="padding: 0.75rem; font-size: 0.8rem; color: var(--slate-700); line-height: 1.4; background: #fafaf9; border-radius: 6px;">
+                    Harga stabil program profilaksis neonatal BBL, pasokan lancar dari PBF rekanan.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- SUB-TAB 7: NOTIFIKASI EMAIL PASIEN -->
+        <div id="adminSecEmail" style="display: none;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: #ffffff; padding: 1.25rem; border-radius: 14px; border: 1px solid var(--border-medium);">
+              <div style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">Total Email Terkirim</div>
+              <div style="font-size: 1.75rem; font-weight: 800; color: #16a34a; margin: 0.2rem 0;">3 Pesan</div>
+              <div style="font-size: 0.75rem; color: #16a34a;">100% Berhasil Diterima Pasien</div>
+            </div>
+
+            <div style="background: #ffffff; padding: 1.25rem; border-radius: 14px; border: 1px solid var(--border-medium);">
+              <div style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">Antrean Pengiriman (Queue)</div>
+              <div style="font-size: 1.75rem; font-weight: 800; color: #0284c7; margin: 0.2rem 0;">0 Menunggu</div>
+              <div style="font-size: 0.75rem; color: var(--slate-500);">SMTP Mailer Service Siap</div>
+            </div>
+
+            <div style="background: #ffffff; padding: 1.25rem; border-radius: 14px; border: 1px solid var(--border-medium);">
+              <div style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">Layanan Mailer Terhubung</div>
+              <div style="font-size: 1.2rem; font-weight: 800; color: var(--primary-dark); margin: 0.2rem 0;">Nodemailer SMTP</div>
+              <div style="font-size: 0.75rem; color: var(--slate-500);">apps/backend/src/jobs/mailer.ts</div>
+            </div>
+          </div>
+
+          <div style="background: #ffffff; border-radius: 16px; border: 1px solid var(--border-medium); padding: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--slate-900);">
+                  Log Pengiriman Notifikasi Email Pasien
+                </h3>
+                <p style="font-size: 0.8125rem; color: var(--slate-500);">
+                  Otomatisasi pengiriman E-Tiket nomor antrean dan pengingat kontrol kehamilan (H-1) ke email pasien.
+                </p>
+              </div>
+              <button
+                type="button"
+                onclick="alert('Simulasi blast pengingat kontrol H-1 berhasil dikirimkan ke seluruh pasien terjadwal besok!')"
+                class="btn btn-secondary"
+                style="font-size: 0.8125rem;"
+              >
+                Kirim Blast Pengingat Kontrol H-1
+              </button>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+              <thead>
+                <tr style="background: #f8fafc; border-bottom: 2px solid var(--border-light); color: var(--slate-600);">
+                  <th style="padding: 0.75rem;">ID Notif</th>
+                  <th style="padding: 0.75rem;">Nama Pasien</th>
+                  <th style="padding: 0.75rem;">Alamat Email</th>
+                  <th style="padding: 0.75rem;">Jenis Notifikasi</th>
+                  <th style="padding: 0.75rem;">Subjek Email</th>
+                  <th style="padding: 0.75rem;">Waktu Kirim</th>
+                  <th style="padding: 0.75rem;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700; color: var(--primary-dark);">EML-2026-0099</td>
+                  <td style="padding: 0.75rem; font-weight: 700;">Ny. Ratna Sari</td>
+                  <td style="padding: 0.75rem; color: var(--slate-700);">ratna.sari@gmail.com</td>
+                  <td style="padding: 0.75rem;"><span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 6px; background: #e0e7ff; color: #3730a3;">TIKET_RESERVASI</span></td>
+                  <td style="padding: 0.75rem; color: var(--slate-800);">Tiket Antrean A-007 - Praktik Mandiri Bidan Ria Indrasti</td>
+                  <td style="padding: 0.75rem; color: var(--slate-500); font-size: 0.8rem;">2026-11-21 08:15:22</td>
+                  <td style="padding: 0.75rem;"><span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 9999px; background: #dcfce7; color: #166534;">TERKIRIM</span></td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700; color: var(--primary-dark);">EML-2026-0098</td>
+                  <td style="padding: 0.75rem; font-weight: 700;">Ny. Dewi Lestari</td>
+                  <td style="padding: 0.75rem; color: var(--slate-700);">dewi.lestari@yahoo.com</td>
+                  <td style="padding: 0.75rem;"><span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 6px; background: #e0e7ff; color: #3730a3;">TIKET_RESERVASI</span></td>
+                  <td style="padding: 0.75rem; color: var(--slate-800);">Tiket Antrean A-008 - Praktik Mandiri Bidan Ria Indrasti</td>
+                  <td style="padding: 0.75rem; color: var(--slate-500); font-size: 0.8rem;">2026-11-21 09:12:45</td>
+                  <td style="padding: 0.75rem;"><span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 9999px; background: #dcfce7; color: #166534;">TERKIRIM</span></td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-light);">
+                  <td style="padding: 0.75rem; font-weight: 700; color: var(--primary-dark);">EML-2026-0097</td>
+                  <td style="padding: 0.75rem; font-weight: 700;">Ny. Ratna Dewi</td>
+                  <td style="padding: 0.75rem; color: var(--slate-700);">ratna.dewi@gmail.com</td>
+                  <td style="padding: 0.75rem;"><span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 6px; background: #e0e7ff; color: #3730a3;">PENGINGAT_KONTROL_H1</span></td>
+                  <td style="padding: 0.75rem; color: var(--slate-800);">Pengingat Kontrol Kehamilan Trimester 3 (H-1) - Bidan Ria</td>
+                  <td style="padding: 0.75rem; color: var(--slate-500); font-size: 0.8rem;">2026-11-20 09:00:00</td>
+                  <td style="padding: 0.75rem;"><span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 9999px; background: #dcfce7; color: #166534;">TERKIRIM</span></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -3220,7 +3530,7 @@ P: Edukasi mekanika tubuh &amp; senam hamil, resep Tablet Tambah Darah (Fe) 1x1 
     }
 
     function switchAdminSubTab(tabName) {
-      var tabs = ['antrean', 'pendaftaran', 'stok', 'kasir'];
+      var tabs = ['antrean', 'pendaftaran', 'stok', 'kasir', 'keuangan', 'riwayatHarga', 'email'];
       tabs.forEach(function(t) {
         var sec = document.getElementById('adminSec' + t.charAt(0).toUpperCase() + t.slice(1));
         var btn = document.getElementById('adminSubTab' + t.charAt(0).toUpperCase() + t.slice(1));

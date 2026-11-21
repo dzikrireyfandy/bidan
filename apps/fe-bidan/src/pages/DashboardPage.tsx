@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { KLINIK_INFO, MOCK_AUDIT_LOGS, AuditLogItem } from '../api/mockData';
+import { KLINIK_INFO, MOCK_AUDIT_LOGS, AuditLogItem, MOCK_REKAP_KEUANGAN, MOCK_HARGA_OBAT_LOGS, MOCK_NOTIFIKASI_EMAIL } from '../api/mockData';
+import { HargaObatLogItem, NotifikasiEmailPasien } from '../api/types';
 
 interface DashboardPageProps {
   onLogout: () => void;
@@ -18,7 +19,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   const [selectedAuditLog, setSelectedAuditLog] = useState<AuditLogItem | null>(null);
 
   // Admin Operational Sub-Tab State
-  const [adminTab, setAdminTab] = useState<'antrean' | 'pendaftaran' | 'stok' | 'kasir'>('antrean');
+  const [adminTab, setAdminTab] = useState<'antrean' | 'pendaftaran' | 'stok' | 'kasir' | 'keuangan' | 'riwayat_harga' | 'email'>('antrean');
+  const [hargaLogs, setHargaLogs] = useState<HargaObatLogItem[]>(MOCK_HARGA_OBAT_LOGS);
+  const [showAddHargaModal, setShowAddHargaModal] = useState<boolean>(false);
+  const [newHargaItem, setNewHargaItem] = useState({
+    obat_id: 'OBT-OKS-01',
+    nama_obat: 'Oksitosin 10 IU / mL (Injeksi)',
+    kategori: 'Uterotonika',
+    hpp_beli: 24000,
+    harga_jual: 38000,
+    alasan: ''
+  });
+  const [emailLogs, setEmailLogs] = useState<NotifikasiEmailPasien[]>(MOCK_NOTIFIKASI_EMAIL);
+  const [walkinEmail, setWalkinEmail] = useState<string>('');
+  const [kirimEmailNotif, setKirimEmailNotif] = useState<boolean>(true);
+  const [previewEmail, setPreviewEmail] = useState<NotifikasiEmailPasien | null>(null);
   const [activeQueueNum, setActiveQueueNum] = useState<string>('A-007');
   const [callAlert, setCallAlert] = useState<string | null>(null);
 
@@ -454,6 +469,54 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 >
                   Billing Kasir
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('keuangan')}
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '7px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: adminTab === 'keuangan' ? 'var(--color-primary)' : 'transparent',
+                    color: adminTab === 'keuangan' ? '#ffffff' : 'var(--color-slate-700)'
+                  }}
+                >
+                  Rekap Keuangan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('riwayat_harga')}
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '7px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: adminTab === 'riwayat_harga' ? 'var(--color-primary)' : 'transparent',
+                    color: adminTab === 'riwayat_harga' ? '#ffffff' : 'var(--color-slate-700)'
+                  }}
+                >
+                  Riwayat Harga (Harga_Obat)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('email')}
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '7px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: adminTab === 'email' ? 'var(--color-primary)' : 'transparent',
+                    color: adminTab === 'email' ? '#ffffff' : 'var(--color-slate-700)'
+                  }}
+                >
+                  Notifikasi Email Pasien
+                </button>
               </div>
             </div>
 
@@ -576,7 +639,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   Petugas loket memasukkan data identitas untuk langsung menerbitkan tiket nomor antrean fisik/WhatsApp.
                 </p>
 
-                <form onSubmit={(e) => { e.preventDefault(); alert('Pendaftaran sukses! Nomor antrean A-011 berhasil diterbitkan untuk Ny. Baru.'); setAdminTab('antrean'); }}>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const newQueue = { no: 'A-011', nama: 'Ny. Dewi Lestari', layanan: 'Pemeriksaan Kehamilan (ANC)', sesi: 'Sesi Pagi', jam: '11:15 WIB', status: 'MENUNGGU' };
+                  setQueueList(prev => [...prev, newQueue]);
+                  if (kirimEmailNotif && walkinEmail) {
+                    const newEmailItem: NotifikasiEmailPasien = {
+                      notif_id: `EML-2026-${Date.now().toString().slice(-4)}`,
+                      pasien_nama: 'Ny. Dewi Lestari',
+                      email_tujuan: walkinEmail,
+                      jenis: 'TIKET_RESERVASI',
+                      subjek: 'Tiket Antrean A-011 - Praktik Mandiri Bidan Ria Indrasti',
+                      waktu_kirim: 'Baru saja',
+                      status: 'TERKIRIM'
+                    };
+                    setEmailLogs(prev => [newEmailItem, ...prev]);
+                    alert(`Pendaftaran sukses! Nomor antrean A-011 berhasil diterbitkan dan E-Tiket telah otomatis dikirimkan ke email: ${walkinEmail}`);
+                  } else {
+                    alert('Pendaftaran sukses! Nomor antrean A-011 berhasil diterbitkan.');
+                  }
+                  setWalkinEmail('');
+                  setAdminTab('antrean');
+                }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Nomor Induk Kependudukan (NIK)</label>
@@ -602,7 +686,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     </div>
                   </div>
 
-                  <div style={{ marginBottom: '1.25rem' }}>
+                  <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Layanan Kebidanan yang Dituju</label>
                     <select style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}>
                       <option>Pemeriksaan Kehamilan (ANC Terpadu)</option>
@@ -613,8 +697,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     </select>
                   </div>
 
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                      Alamat Email Pasien (Opsional, untuk Pengiriman E-Tiket &amp; Pengingat Kontrol)
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="Contoh: dewi.lestari@gmail.com"
+                      value={walkinEmail}
+                      onChange={(e) => setWalkinEmail(e.target.value)}
+                      style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      id="kirimEmailNotif"
+                      checked={kirimEmailNotif}
+                      onChange={(e) => setKirimEmailNotif(e.target.checked)}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary)' }}
+                    />
+                    <label htmlFor="kirimEmailNotif" style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-slate-700)', cursor: 'pointer' }}>
+                      Kirimkan E-Tiket antrean &amp; konfirmasi otomatis ke email pasien via SMTP Mailer
+                    </label>
+                  </div>
+
                   <button type="submit" className="btn btn-primary btn-shimmer" style={{ width: '100%', padding: '0.75rem', fontWeight: 700 }}>
-                    Terbitkan Nomor Antrean Pasien
+                    Terbitkan Nomor Antrean &amp; Kirim E-Tiket
                   </button>
                 </form>
               </div>
@@ -691,6 +801,268 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>QRIS (60%) | Tunai (40%)</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Terhubung Sistem MiniWorldRS</div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: REKAP KEUANGAN & MARGIN */}
+            {adminTab === 'keuangan' && (
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #16a34a' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Total Pendapatan (Inflow Kasir &amp; Layanan)</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a', margin: '0.2rem 0' }}>Rp {MOCK_REKAP_KEUANGAN.total_pendapatan.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-600)' }}>12 Pasien Terlayani Sesi Hari Ini</div>
+                  </div>
+
+                  <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #dc2626' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>HPP Bahan Obat &amp; Alkes Kebidanan</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626', margin: '0.2rem 0' }}>Rp {MOCK_REKAP_KEUANGAN.total_pengeluaran_obat.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-600)' }}>Pengeluaran Farmasi, IUD, Oksitosin</div>
+                  </div>
+
+                  <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #f59e0b' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Beban Operasional &amp; Sanitasi Medis</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f59e0b', margin: '0.2rem 0' }}>Rp {MOCK_REKAP_KEUANGAN.beban_operasional_klinik.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-600)' }}>Listrik, Air Steril, Limbah Medis B3</div>
+                  </div>
+
+                  <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid var(--color-primary)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Laba Bersih Operasional (Net Profit)</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>Rp {MOCK_REKAP_KEUANGAN.laba_bersih.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 700 }}>Margin Bersih: {MOCK_REKAP_KEUANGAN.margin_bersih_persen}%</div>
+                  </div>
+                </div>
+
+                {/* Card Analisis Fluktuasi HPP Bahan Obat */}
+                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '14px', padding: '1.25rem', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e3a8a', margin: 0 }}>
+                      Analisis Fluktuasi Margin &amp; Dinamika Kenaikan Bahan Obat (Justifikasi Laba)
+                    </h4>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: '#1e40af', lineHeight: 1.6, margin: 0 }}>
+                    {MOCK_REKAP_KEUANGAN.analisis_fluktuasi}
+                  </p>
+                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed #93c5fd', fontSize: '0.8rem', color: '#1d4ed8', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    <span>• <strong>Faktor Kunci 1:</strong> Paket persalinan normal menyumbang 45.3% laba kotor melalui jasa kebidanan mandiri.</span>
+                    <span>• <strong>Faktor Kunci 2:</strong> Pengadaan batch awal Oksitosin sebelum lonjakan distributor menahan beban HPP obat di bawah 40%.</span>
+                  </div>
+                </div>
+
+                {/* Breakdown Tabel Layanan */}
+                <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem' }}>
+                  <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-slate-900)', marginBottom: '0.35rem' }}>
+                    Rincian Arus Pendapatan per Pos Layanan Asuhan Kebidanan
+                  </h4>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)', marginBottom: '1.25rem' }}>
+                    Perbandingan pendapatan bruto, alokasi HPP bahan obat/alkes, dan laba kontribusi per divisi.
+                  </p>
+
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--border-light)', color: 'var(--color-slate-600)' }}>
+                        <th style={{ padding: '0.75rem' }}>Pos Layanan Medis</th>
+                        <th style={{ padding: '0.75rem' }}>Volume Pasien</th>
+                        <th style={{ padding: '0.75rem' }}>Pendapatan Bruto</th>
+                        <th style={{ padding: '0.75rem' }}>HPP Bahan Medis/Obat</th>
+                        <th style={{ padding: '0.75rem' }}>Margin Kontribusi</th>
+                        <th style={{ padding: '0.75rem' }}>Persentase Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                        <td style={{ padding: '0.75rem', fontWeight: 700 }}>Pemeriksaan Kehamilan (ANC Terpadu)</td>
+                        <td style={{ padding: '0.75rem' }}>5 Kunjungan</td>
+                        <td style={{ padding: '0.75rem', fontWeight: 700, color: '#16a34a' }}>Rp 1.250.000</td>
+                        <td style={{ padding: '0.75rem', color: '#dc2626' }}>Rp 280.000</td>
+                        <td style={{ padding: '0.75rem', fontWeight: 700 }}>Rp 970.000</td>
+                        <td style={{ padding: '0.75rem' }}><span style={{ padding: '0.2rem 0.5rem', borderRadius: '6px', background: '#dcfce7', color: '#166534', fontWeight: 700, fontSize: '0.75rem' }}>77.6%</span></td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                        <td style={{ padding: '0.75rem', fontWeight: 700 }}>Paket Asuhan Persalinan Normal 24 Jam</td>
+                        <td style={{ padding: '0.75rem' }}>1 Kelahiran</td>
+                        <td style={{ padding: '0.75rem', fontWeight: 700, color: '#16a34a' }}>Rp 2.200.000</td>
+                        <td style={{ padding: '0.75rem', color: '#dc2626' }}>Rp 980.000</td>
+                        <td style={{ padding: '0.75rem', fontWeight: 700 }}>Rp 1.220.000</td>
+                        <td style={{ padding: '0.75rem' }}><span style={{ padding: '0.2rem 0.5rem', borderRadius: '6px', background: '#dcfce7', color: '#166534', fontWeight: 700, fontSize: '0.75rem' }}>55.4%</span></td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                        <td style={{ padding: '0.75rem', fontWeight: 700 }}>Pelayanan Kontrasepsi (IUD / Implan / Suntik)</td>
+                        <td style={{ padding: '0.75rem' }}>3 Pasien</td>
+                        <td style={{ padding: '0.75rem', fontWeight: 700, color: '#16a34a' }}>Rp 900.000</td>
+                        <td style={{ padding: '0.75rem', color: '#dc2626' }}>Rp 480.000</td>
+                        <td style={{ padding: '0.75rem', fontWeight: 700 }}>Rp 420.000</td>
+                        <td style={{ padding: '0.75rem' }}><span style={{ padding: '0.2rem 0.5rem', borderRadius: '6px', background: '#fef3c7', color: '#92400e', fontWeight: 700, fontSize: '0.75rem' }}>46.7%</span></td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                        <td style={{ padding: '0.75rem', fontWeight: 700 }}>Imunisasi &amp; Perawatan Bayi Baru Lahir</td>
+                        <td style={{ padding: '0.75rem' }}>3 Bayi</td>
+                        <td style={{ padding: '0.75rem', fontWeight: 700, color: '#16a34a' }}>Rp 500.000</td>
+                        <td style={{ padding: '0.75rem', color: '#dc2626' }}>Rp 180.000</td>
+                        <td style={{ padding: '0.75rem', fontWeight: 700 }}>Rp 320.000</td>
+                        <td style={{ padding: '0.75rem' }}><span style={{ padding: '0.2rem 0.5rem', borderRadius: '6px', background: '#dcfce7', color: '#166534', fontWeight: 700, fontSize: '0.75rem' }}>64.0%</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 6: RIWAYAT HARGA OBAT */}
+            {adminTab === 'riwayat_harga' && (
+              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
+                      Log Riwayat Harga Jual Obat &amp; Fluktuasi HPP (Tabel dbo.[Harga_Obat])
+                    </h3>
+                    <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)' }}>
+                      Audit trail penyesuaian harga obat, margin keuntungan, dan dokumentasi alasan kenaikan bahan baku farmasi.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddHargaModal(true)}
+                    className="btn btn-primary btn-shimmer"
+                    style={{ fontSize: '0.8125rem' }}
+                  >
+                    + Catat Penyesuaian Harga Baru
+                  </button>
+                </div>
+
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--border-light)', color: 'var(--color-slate-600)' }}>
+                        <th style={{ padding: '0.75rem' }}>ID Log</th>
+                        <th style={{ padding: '0.75rem' }}>Nama Obat / Alkes</th>
+                        <th style={{ padding: '0.75rem' }}>HPP Beli</th>
+                        <th style={{ padding: '0.75rem' }}>Harga Jual</th>
+                        <th style={{ padding: '0.75rem' }}>Margin (Rp / %)</th>
+                        <th style={{ padding: '0.75rem' }}>Berlaku Mulai</th>
+                        <th style={{ padding: '0.75rem' }}>Petugas Logistik</th>
+                        <th style={{ padding: '0.75rem', minWidth: '240px' }}>Alasan / Justifikasi Fluktuasi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {hargaLogs.map((h) => (
+                        <tr key={h.harga_obat_id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                          <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>{h.harga_obat_id}</td>
+                          <td style={{ padding: '0.75rem' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--color-slate-900)' }}>{h.nama_obat}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>{h.kode_obat} • {h.kategori}</div>
+                          </td>
+                          <td style={{ padding: '0.75rem', color: '#dc2626', fontWeight: 600 }}>Rp {h.hpp_beli.toLocaleString('id-ID')}</td>
+                          <td style={{ padding: '0.75rem', color: '#16a34a', fontWeight: 700 }}>Rp {h.harga_jual.toLocaleString('id-ID')}</td>
+                          <td style={{ padding: '0.75rem' }}>
+                            <div style={{ fontWeight: 700 }}>Rp {h.margin_rp.toLocaleString('id-ID')}</div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16a34a' }}>{h.margin_persen}%</span>
+                          </td>
+                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{h.berlaku_dari}</td>
+                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-600)' }}>{h.diubah_oleh}</td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--color-slate-700)', lineHeight: 1.4, background: '#fafaf9', borderRadius: '6px' }}>
+                            {h.alasan}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 7: NOTIFIKASI EMAIL PASIEN */}
+            {adminTab === 'email' && (
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Total Email Terkirim</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a', margin: '0.2rem 0' }}>{emailLogs.filter(e => e.status === 'TERKIRIM').length} Pesan</div>
+                    <div style={{ fontSize: '0.75rem', color: '#16a34a' }}>100% Berhasil Diterima Pasien</div>
+                  </div>
+
+                  <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Antrean Pengiriman (Queue)</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0284c7', margin: '0.2rem 0' }}>{emailLogs.filter(e => e.status === 'MENUNGGU').length} Menunggu</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>SMTP Mailer Service Siap</div>
+                  </div>
+
+                  <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Layanan Mailer Terhubung</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>Nodemailer SMTP</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>apps/backend/src/jobs/mailer.ts</div>
+                  </div>
+                </div>
+
+                <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
+                        Log Pengiriman Notifikasi Email Pasien
+                      </h3>
+                      <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)' }}>
+                        Otomatisasi pengiriman E-Tiket nomor antrean dan pengingat kontrol kehamilan (H-1) ke email pasien.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => alert('Simulasi pengiriman email pengingat kontrol H-1 berhasil dijalankan via background job.')}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8125rem' }}
+                    >
+                      Kirim Blast Pengingat Kontrol H-1
+                    </button>
+                  </div>
+
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--border-light)', color: 'var(--color-slate-600)' }}>
+                        <th style={{ padding: '0.75rem' }}>ID Notif</th>
+                        <th style={{ padding: '0.75rem' }}>Nama Pasien</th>
+                        <th style={{ padding: '0.75rem' }}>Alamat Email</th>
+                        <th style={{ padding: '0.75rem' }}>Jenis Notifikasi</th>
+                        <th style={{ padding: '0.75rem' }}>Subjek Email</th>
+                        <th style={{ padding: '0.75rem' }}>Waktu Kirim</th>
+                        <th style={{ padding: '0.75rem' }}>Status</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'right' }}>Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {emailLogs.map((e) => (
+                        <tr key={e.notif_id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                          <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>{e.notif_id}</td>
+                          <td style={{ padding: '0.75rem', fontWeight: 700 }}>{e.pasien_nama}</td>
+                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-700)' }}>{e.email_tujuan}</td>
+                          <td style={{ padding: '0.75rem' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '6px', background: '#e0e7ff', color: '#3730a3' }}>
+                              {e.jenis}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-800)' }}>{e.subjek}</td>
+                          <td style={{ padding: '0.75rem', color: 'var(--color-slate-500)', fontSize: '0.8rem' }}>{e.waktu_kirim}</td>
+                          <td style={{ padding: '0.75rem' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: e.status === 'TERKIRIM' ? '#dcfce7' : '#fef3c7', color: e.status === 'TERKIRIM' ? '#166534' : '#92400e' }}>
+                              {e.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewEmail(e)}
+                              className="btn btn-secondary"
+                              style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                            >
+                              Preview Email
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -855,6 +1227,164 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
         )}
 
       </main>
+
+      {/* Modal: Catat Penyesuaian Harga Baru (Harga_Obat) */}
+      {showAddHargaModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '520px', width: '100%', padding: '1.75rem' }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-slate-900)', marginBottom: '0.35rem' }}>
+              Catat Penyesuaian Harga Baru (dbo.[Harga_Obat])
+            </h3>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)', marginBottom: '1.25rem' }}>
+              Pencatatan riwayat HPP beli baru, harga jual, dan justifikasi kenaikan bahan baku obat dari distributor/PBF.
+            </p>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const marginRp = newHargaItem.harga_jual - newHargaItem.hpp_beli;
+              const marginPct = Number(((marginRp / newHargaItem.harga_jual) * 100).toFixed(2));
+              const itemToAdd: HargaObatLogItem = {
+                harga_obat_id: `HRO-2026-${Date.now().toString().slice(-4)}`,
+                obat_id: newHargaItem.obat_id,
+                kode_obat: newHargaItem.obat_id,
+                nama_obat: newHargaItem.nama_obat,
+                kategori: newHargaItem.kategori,
+                hpp_beli: newHargaItem.hpp_beli,
+                harga_jual: newHargaItem.harga_jual,
+                margin_rp: marginRp,
+                margin_persen: marginPct,
+                berlaku_dari: new Date().toISOString().split('T')[0] || '',
+                berlaku_sampai: null,
+                diubah_oleh: 'Ahmad Fauzi (Logistik)',
+                alasan: newHargaItem.alasan || 'Penyesuaian berkala harga bahan farmasi distributor rekanan.'
+              };
+              setHargaLogs([itemToAdd, ...hargaLogs]);
+              setShowAddHargaModal(false);
+              alert('Penyesuaian harga obat berhasil dicatat ke dalam log riwayat!');
+            }}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Pilih Obat / Alkes</label>
+                <select
+                  value={newHargaItem.obat_id}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (id === 'OBT-OKS-01') setNewHargaItem({ ...newHargaItem, obat_id: id, nama_obat: 'Oksitosin 10 IU / mL (Injeksi)', kategori: 'Uterotonika', hpp_beli: 24000, harga_jual: 38000 });
+                    else if (id === 'ALKES-IUD-01') setNewHargaItem({ ...newHargaItem, obat_id: id, nama_obat: 'IUD Copper T 380A Steril', kategori: 'Alat Kontrasepsi', hpp_beli: 175000, harga_jual: 270000 });
+                    else setNewHargaItem({ ...newHargaItem, obat_id: id, nama_obat: 'Vitamin K1 1 mg (Injeksi BBL)', kategori: 'Profilaksis Bayi', hpp_beli: 13000, harga_jual: 22000 });
+                  }}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                >
+                  <option value="OBT-OKS-01">Oksitosin 10 IU / mL (Injeksi Uterotonika)</option>
+                  <option value="ALKES-IUD-01">IUD Copper T 380A Steril (Alat Kontrasepsi)</option>
+                  <option value="OBT-VK1-01">Vitamin K1 1 mg (Injeksi BBL)</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>HPP Beli Supplier (Rp)</label>
+                  <input
+                    type="number"
+                    required
+                    value={newHargaItem.hpp_beli}
+                    onChange={(e) => setNewHargaItem({ ...newHargaItem, hpp_beli: Number(e.target.value) })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Harga Jual Pasien (Rp)</label>
+                  <input
+                    type="number"
+                    required
+                    value={newHargaItem.harga_jual}
+                    onChange={(e) => setNewHargaItem({ ...newHargaItem, harga_jual: Number(e.target.value) })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Alasan / Justifikasi Kenaikan Bahan Farmasi</label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Contoh: Kenaikan harga bahan baku impor dari produsen Bio Farma sebesar 15% serta penyesuaian biaya rantai dingin cold chain..."
+                  value={newHargaItem.alasan}
+                  onChange={(e) => setNewHargaItem({ ...newHargaItem, alasan: e.target.value })}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button type="button" onClick={() => setShowAddHargaModal(false)} className="btn btn-secondary">
+                  Batal
+                </button>
+                <button type="submit" className="btn btn-primary btn-shimmer">
+                  Simpan Riwayat Harga
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Preview Template Email Pasien */}
+      {previewEmail && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '580px', width: '100%', padding: '2rem', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-light)', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: '#dcfce7', color: '#166534' }}>
+                  {previewEmail.status} • SMTP Mailer
+                </span>
+                <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)', marginTop: '0.4rem' }}>
+                  {previewEmail.subjek}
+                </h4>
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-slate-500)' }}>
+                  Kepada: <strong>{previewEmail.pasien_nama}</strong> &lt;{previewEmail.email_tujuan}&gt;
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewEmail(null)}
+                style={{ background: '#f1f5f9', border: 'none', borderRadius: '8px', width: '32px', height: '32px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Email Body Preview */}
+            <div style={{ background: '#f8fafc', border: '1px solid var(--border-medium)', borderRadius: '12px', padding: '1.5rem', fontSize: '0.875rem', lineHeight: 1.6, color: 'var(--color-slate-800)' }}>
+              <div style={{ textAlign: 'center', borderBottom: '2px solid var(--border-light)', paddingBottom: '1rem', marginBottom: '1rem' }}>
+                <div style={{ fontWeight: 800, color: 'var(--color-primary-dark)', fontSize: '1.1rem' }}>PRAKTIK MANDIRI BIDAN RIA INDRASTI J. S.KEB</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Perumahan Bougenvile Blok FG 12b, Simpang Rimbo, Kota Jambi • Telp/WA: 0853-7799-8889</div>
+              </div>
+
+              <p>Halo <strong>{previewEmail.pasien_nama}</strong>,</p>
+              <p>Terima kasih telah mempercayakan layanan kesehatan ibu dan anak kepada Praktik Mandiri Bidan Ria Indrasti.</p>
+              
+              <div style={{ background: '#faf5fe', border: '2px dashed var(--border-medium)', borderRadius: '10px', padding: '1rem', margin: '1rem 0', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary)' }}>E-TIKET ANTREAN DIGITAL</div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--color-primary-dark)' }}>A-007</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-slate-600)' }}>Estimasi Jam Layanan: 09:30 WIB (Sesi Pagi)</div>
+              </div>
+
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-slate-600)' }}>
+                Mohon hadir 10 menit sebelum estimasi waktu. Tunjukkan email atau nomor antrean ini kepada petugas loket pendaftaran.
+              </p>
+              <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-light)', fontSize: '0.75rem', color: 'var(--color-slate-400)', textAlign: 'center' }}>
+                Email otomatis dari Sistem Antrean Praktik Mandiri Bidan Ria Indrasti.
+              </div>
+            </div>
+
+            <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setPreviewEmail(null)} className="btn btn-primary" style={{ fontSize: '0.8125rem' }}>
+                Tutup Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

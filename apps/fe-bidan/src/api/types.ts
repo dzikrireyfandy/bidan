@@ -81,3 +81,40 @@ export interface ReservasiData {
   keluhan: string;
   is_pasien_lama: boolean;
 }
+
+
+export interface HargaObatLogItem {
+  harga_obat_id: string;
+  obat_id: string;
+  kode_obat: string;
+  nama_obat: string;
+  kategori: string;
+  hpp_beli: number;
+  harga_jual: number;
+  margin_rp: number;
+  margin_persen: number;
+  berlaku_dari: string;
+  berlaku_sampai: string | null;
+  diubah_oleh: string;
+  alasan: string;
+}
+
+export interface RekapKeuanganOperasional {
+  periode: string;
+  total_pendapatan: number;
+  total_pengeluaran_obat: number;
+  beban_operasional_klinik: number;
+  laba_bersih: number;
+  margin_bersih_persen: number;
+  analisis_fluktuasi: string;
+}
+
+export interface NotifikasiEmailPasien {
+  notif_id: string;
+  pasien_nama: string;
+  email_tujuan: string;
+  jenis: 'TIKET_RESERVASI' | 'PENGINGAT_KONTROL_H1' | 'RESUME_MEDIS_KIA';
+  subjek: string;
+  waktu_kirim: string;
+  status: 'TERKIRIM' | 'MENUNGGU' | 'GAGAL';
+}

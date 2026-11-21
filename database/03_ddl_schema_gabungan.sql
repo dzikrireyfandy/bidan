@@ -1081,7 +1081,8 @@ CREATE TABLE dbo.[Audit_Log] (
     [nilai_baru] NVARCHAR(MAX) NOT NULL,
     [ip_address] VARCHAR(45) NOT NULL,
     [waktu] DATETIME2 NOT NULL,
-    [user_ref] NVARCHAR(50) NULL
+    [user_ref] NVARCHAR(50) NULL,
+    [keterangan] NVARCHAR(200) NULL
 );
 GO
 -- No. 97: Laporan_Insiden

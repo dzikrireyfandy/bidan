@@ -25,11 +25,11 @@ export class AuthService {
 
     const cocok = await bcrypt.compare(password, akun.password_hash);
     if (!cocok) {
-      await this.repository.recordFailedAttempt(akun.akun_id);
+      await this.repository.recordFailedAttempt(akun.akun_id, username);
       throw ApiError.fromCode('ERR-AUTH-02');
     }
 
-    await this.repository.recordLoginSuccess(akun.akun_id);
+    await this.repository.recordLoginSuccess(akun.akun_id, username);
 
     return {
       token: signToken({
@@ -56,6 +56,11 @@ export class AuthService {
         unitId: auth.unitId
       })
     };
+  }
+
+  async logout(auth: AuthContext): Promise<void> {
+    const userRef = auth.subPeran ? `${auth.peran}:${auth.subPeran}` : auth.peran;
+    await this.repository.recordAudit(auth.akunId, userRef, 'LOGOUT', 'Logout');
   }
 
   async requestReset(email: string): Promise<{ message: string }> {

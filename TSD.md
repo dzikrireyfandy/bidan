@@ -1609,6 +1609,7 @@ Kamus data dihasilkan dari DDL gabungan (`03_ddl_schema_gabungan.sql`) dan skrip
 | `ip_address` | `VARCHAR(45)` | `NOT NULL` | |
 | `waktu` | `DATETIME2` | `NOT NULL` | |
 | `user_ref` | `NVARCHAR(50)` | `NULL` | |
+| `keterangan` | `NVARCHAR(200)` | `NULL` | Deskripsi manusiawi aksi, mis. `Login`, `Mendaftar Antrian` |
 
 ##### 97. `Laporan_Insiden` — Laporan insiden keselamatan.
 | Kolom | Tipe | Nullability | Keterangan |

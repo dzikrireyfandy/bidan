@@ -27,7 +27,7 @@ const envSchema = z.object({
   DB_PASSWORD: z.string().min(1, 'DB_PASSWORD is required'),
   DB_ENCRYPT: z.string().default('false').transform((val) => val === 'true'),
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
-  JWT_EXPIRES_IN: z.string().default('3h'),
+  JWT_EXPIRES_IN: z.string().default('30m'),
   // TODO(deploy): ganti default dev dengan domain produksi Vercel sebelum rilis (lihat .env.example)
   ALLOWED_ORIGINS: z.string().default('http://localhost:5173,http://localhost:5174'),
   RATE_LIMIT_WINDOW_MS: z.string().default('60000').transform((val) => parseInt(val, 10)),

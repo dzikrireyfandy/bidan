@@ -10,9 +10,12 @@ export const login = asyncHandler(async (req, res) => {
   return respond.ok(res, await service.login(body.username, body.password));
 });
 
-export const logout = asyncHandler(async (_req, res) =>
-  respond.ok(res, { message: 'Logout berhasil' })
-);
+export const logout = asyncHandler(async (req, res) => {
+  if (req.auth) {
+    await service.logout(req.auth);
+  }
+  return respond.ok(res, { message: 'Logout berhasil' });
+});
 
 export const refresh = asyncHandler(async (req, res) => {
   if (!req.auth) {

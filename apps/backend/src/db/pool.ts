@@ -1,5 +1,13 @@
 import sql from 'mssql';
 import config from '../config/env';
+import { getAuditContext } from './auditContext';
+import type { AuditContext } from './auditContext';
+
+/** Selalu di-set di batch yang sama dengan query agar tidak mewarisi konteks koneksi pooled. */
+const AUDIT_PREFIX = `EXEC sp_set_session_context N'akun_id', @__audit_akun;
+EXEC sp_set_session_context N'user_ref', @__audit_user;
+EXEC sp_set_session_context N'keterangan', @__audit_keterangan;
+`;
 
 export class SqlConnection {
   #pool: sql.ConnectionPool | null;
@@ -88,33 +96,31 @@ export class SqlConnection {
     return `DECLARE @__omo_ids TABLE (id ${key.type});\n${rewritten};\nSELECT * FROM [${table}] WHERE [${key.pk}] IN (SELECT id FROM @__omo_ids);`;
   }
 
-  async query<T>(text: string, params: Record<string, unknown> = {}, context?: { key: string; value: string }): Promise<sql.IResult<T>> {
+  #applyAuditContext(request: sql.Request, context?: AuditContext): void {
+    const ctx = context ?? getAuditContext();
+    request.input('__audit_akun', sql.NVarChar(64), ctx.akunId ?? null);
+    request.input('__audit_user', sql.NVarChar(100), ctx.userRef ?? null);
+    request.input('__audit_keterangan', sql.NVarChar(200), ctx.keterangan ?? null);
+  }
+
+  async query<T>(text: string, params: Record<string, unknown> = {}, context?: AuditContext): Promise<sql.IResult<T>> {
     const pool = await this.connect();
     const request = pool.request();
     const statement = /OUTPUT\s+(?:INSERTED|DELETED)\./i.test(text) ? await this.#rewriteOutput(text) : text;
-
-    if (context && context.key && context.value) {
-      await request.input('_ctx_key', sql.VarChar, context.key);
-      await request.input('_ctx_val', sql.VarChar, context.value);
-      await request.query(`EXEC sp_set_session_context @key = @_ctx_key, @value = @_ctx_val;`);
-    }
+    this.#applyAuditContext(request, context);
 
     for (const [key, value] of Object.entries(params)) {
       request.input(key, value);
     }
-    const result = await request.query<T>(statement);
+    const result = await request.query<T>(AUDIT_PREFIX + statement);
     return result;
   }
 
-  async execute<T>(procName: string, params: Record<string, unknown> = {}, context?: { key: string; value: string }): Promise<sql.IResult<T>> {
+  async execute<T>(procName: string, params: Record<string, unknown> = {}, context?: AuditContext): Promise<sql.IResult<T>> {
     const pool = await this.connect();
     const request = pool.request();
-
-    if (context && context.key && context.value) {
-      await request.input('_ctx_key', sql.VarChar, context.key);
-      await request.input('_ctx_val', sql.VarChar, context.value);
-      await request.query(`EXEC sp_set_session_context @key = @_ctx_key, @value = @_ctx_val;`);
-    }
+    this.#applyAuditContext(request, context);
+    await request.batch(AUDIT_PREFIX);
 
     for (const [key, value] of Object.entries(params)) {
       request.input(key, value);

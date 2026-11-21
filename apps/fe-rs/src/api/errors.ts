@@ -1,6 +1,5 @@
 import axios from 'axios';
 import type { ApiErrorBody } from './types';
-import { pesanUntukErrorId } from './errorMessages';
 
 interface ValidationDetail {
   path?: Array<string | number>;
@@ -39,5 +38,5 @@ export const pesanErrorApi = (
     }
   }
 
-  return pesan || pesanUntukErrorId(body?.error?.errorId) || fallback;
+  return pesan || fallback;
 };

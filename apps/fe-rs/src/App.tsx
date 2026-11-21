@@ -14,6 +14,14 @@ export function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const timer = window.setInterval(() => {
+      void session.refresh();
+    }, 30 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [isAuthenticated]);
+
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
   };

@@ -24,7 +24,8 @@ const buatRepo = () => ({
   enqueueNotification: jest.fn().mockResolvedValue(undefined),
   findActiveOtp: jest.fn(),
   updatePassword: jest.fn().mockResolvedValue(undefined),
-  markOtpUsed: jest.fn().mockResolvedValue(undefined)
+  markOtpUsed: jest.fn().mockResolvedValue(undefined),
+  recordAudit: jest.fn().mockResolvedValue(undefined)
 });
 
 type RepoMock = ReturnType<typeof buatRepo>;
@@ -86,7 +87,7 @@ describe('AuthService', () => {
     const err = await ambilError(service.login('perawat', 'salah-sekali'));
 
     expect(err).toMatchObject({ statusCode: 401, errorId: 'ERR-AUTH-02' });
-    expect(repo.recordFailedAttempt).toHaveBeenCalledWith('akun-1');
+    expect(repo.recordFailedAttempt).toHaveBeenCalledWith('akun-1', 'perawat');
     expect(repo.recordLoginSuccess).not.toHaveBeenCalled();
   });
 
@@ -95,11 +96,24 @@ describe('AuthService', () => {
 
     const hasil = await service.login('perawat', 'rahasia123');
 
-    expect(repo.recordLoginSuccess).toHaveBeenCalledWith('akun-1');
+    expect(repo.recordLoginSuccess).toHaveBeenCalledWith('akun-1', 'perawat');
     expect(hasil.peran).toBe('STAFF');
     expect(hasil.subPeran).toBe('PERAWAT');
     expect(typeof hasil.token).toBe('string');
     expect(hasil.token.split('.')).toHaveLength(3);
+  });
+
+  test('logout mencatat audit LOGOUT dengan akun dan user_ref', async () => {
+    await service.logout({
+      akunId: 'akun-1',
+      peran: 'STAFF',
+      subPeran: 'PERAWAT',
+      stafId: 'staf-1',
+      pasienId: null,
+      unitId: null
+    });
+
+    expect(repo.recordAudit).toHaveBeenCalledWith('akun-1', 'STAFF:PERAWAT', 'LOGOUT', 'Logout');
   });
 
   test('refresh menerbitkan token baru dari konteks auth', () => {

@@ -3,7 +3,7 @@ import axios from 'axios';
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
   headers: {
-    'X-Client-App': 'RS',
+    'X-Client-App': 'BIDAN',
     'Content-Type': 'application/json',
   },
 });
@@ -22,7 +22,8 @@ apiClient.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       localStorage.removeItem('bidan_access_token');
       localStorage.removeItem('bidan_user_role');
-      if (window.location.pathname !== '/login') {
+      // Jangan langsung redirect hard page jika di beranda publik
+      if (window.location.pathname.startsWith('/app')) {
         window.location.href = '/login';
       }
     }

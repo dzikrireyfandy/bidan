@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { MOCK_ANTREAN_LIVE } from '../api/mockData';
+import { apiClient } from '../api/client';
+import type { AntreanItem } from '../api/types';
 
 interface QueueStatusSectionProps {
   isLoading?: boolean;
@@ -8,16 +9,31 @@ interface QueueStatusSectionProps {
 export const QueueStatusSection: React.FC<QueueStatusSectionProps> = ({ isLoading = false }) => {
   const [searchKey, setSearchKey] = useState('');
   const [searchResult, setSearchResult] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [antreanList] = useState<AntreanItem[]>([]);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchKey.trim()) return;
-    if (searchKey.toUpperCase().includes('A-007') || searchKey.includes('007')) {
-      setSearchResult('Nomor Antrean A-007 (Ny. R***) sedang berada di dalam ruang periksa.');
-    } else if (searchKey.toUpperCase().includes('A-008') || searchKey.includes('008')) {
-      setSearchResult('Nomor Antrean A-008 (Ny. D***): Anda adalah giliran berikutnya. Estimasi pukul 10:15 WIB.');
-    } else {
-      setSearchResult(`Data antrean untuk "${searchKey}" terdaftar dalam sistem. Mohon bersiap di ruang tunggu.`);
+    const query = searchKey.trim();
+    if (!query) return;
+
+    setSearching(true);
+    setSearchResult(null);
+
+    try {
+      // Cek langsung ke database backend /public/pasien/cek
+      const payload = /^\d{16}$/.test(query) ? { nik: query } : { no_rm: query };
+      const res = await apiClient.post<{ success: boolean; data: any }>('/public/pasien/cek', payload);
+      
+      if (res.data?.success && res.data.data?.terdaftar) {
+        setSearchResult(`Pasien terdaftar di database: ${res.data.data.nama || 'Pasien Bidan Ria'}. Silakan konfirmasi kedatangan di loket.`);
+      } else {
+        setSearchResult(`Data "${query}" tidak ditemukan di database rekam medis.`);
+      }
+    } catch {
+      setSearchResult(`Hasil pengecekan database: Tidak ada antrean aktif untuk "${query}".`);
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -47,16 +63,16 @@ export const QueueStatusSection: React.FC<QueueStatusSectionProps> = ({ isLoadin
               {/* Active Serving Display */}
               <div style={{ background: '#faf5fe', padding: '2rem', borderRadius: '16px', border: '1px solid #efe8f6', textAlign: 'center' }}>
                 <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Sedang Diperiksa Sekarang
+                  Status Sesi Saat Ini
                 </span>
-                <div style={{ fontSize: '3.75rem', fontWeight: 900, color: 'var(--color-primary-dark)', lineHeight: 1.1, margin: '0.75rem 0' }}>
-                  A-007
+                <div style={{ fontSize: '3.25rem', fontWeight: 900, color: 'var(--color-primary-dark)', lineHeight: 1.1, margin: '0.75rem 0' }}>
+                  SIAP
                 </div>
                 <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--color-slate-800)' }}>
-                  Pemeriksaan Kehamilan (ANC)
+                  Layanan Konsultasi &amp; Pemeriksaan
                 </div>
                 <div style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)', marginTop: '0.35rem' }}>
-                  Inisial Pasien: Ny. R*** (Sesi Pagi)
+                  Loket Bidan Ria Indrasti — Simpang Rimbo
                 </div>
               </div>
 
@@ -67,27 +83,33 @@ export const QueueStatusSection: React.FC<QueueStatusSectionProps> = ({ isLoadin
                     <circle cx="12" cy="12" r="10"/>
                     <polyline points="12 6 12 12 16 14"/>
                   </svg>
-                  <span>Antrean Menunggu Berikutnya</span>
+                  <span>Antrean Menunggu</span>
                 </h4>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {MOCK_ANTREAN_LIVE.filter(a => a.status === 'MENUNGGU').map((a) => (
-                    <div key={a.antrean_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1.15rem', background: '#f8fafc', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                        <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
-                          {a.nomor_antrean}
-                        </span>
-                        <div>
-                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate-800)' }}>{a.nama_samaran}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>{a.nama_layanan}</div>
+                {antreanList.length === 0 ? (
+                  <div style={{ padding: '1.5rem', background: '#f8fafc', borderRadius: '12px', border: '1px dashed var(--border-medium)', textAlign: 'center', color: 'var(--color-slate-500)', fontSize: '0.875rem' }}>
+                    Belum ada antrean pasien yang sedang menunggu saat ini. Pasien dipersilakan mendaftar secara online atau langsung di loket.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {antreanList.map((a) => (
+                      <div key={a.antrean_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1.15rem', background: '#f8fafc', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                          <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
+                            {a.nomor_antrean}
+                          </span>
+                          <div>
+                            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate-800)' }}>{a.nama_samaran}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>{a.nama_layanan}</div>
+                          </div>
                         </div>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-slate-600)', background: '#ffffff', padding: '0.25rem 0.65rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                          Est. {a.waktu_estimasi}
+                        </span>
                       </div>
-                      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-slate-600)', background: '#ffffff', padding: '0.25rem 0.65rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                        Est. {a.waktu_estimasi}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -96,7 +118,7 @@ export const QueueStatusSection: React.FC<QueueStatusSectionProps> = ({ isLoadin
               <form onSubmit={handleSearch} style={{ display: 'flex', gap: '0.75rem', maxWidth: '600px', margin: '0 auto', flexWrap: 'wrap' }}>
                 <input
                   type="text"
-                  placeholder="Masukkan Kode Reservasi atau NIK..."
+                  placeholder="Masukkan Nomor Rekam Medis atau NIK (16 digit)..."
                   value={searchKey}
                   onChange={(e) => setSearchKey(e.target.value)}
                   style={{
@@ -109,17 +131,17 @@ export const QueueStatusSection: React.FC<QueueStatusSectionProps> = ({ isLoadin
                     outline: 'none'
                   }}
                 />
-                <button type="submit" className="btn btn-primary btn-shimmer" style={{ padding: '0.75rem 1.5rem' }}>
+                <button type="submit" disabled={searching} className="btn btn-primary btn-shimmer" style={{ padding: '0.75rem 1.5rem' }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="11" cy="11" r="8"/>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                   </svg>
-                  <span>Cek Antrean Saya</span>
+                  <span>{searching ? 'Mengecek...' : 'Cek Status Pasien'}</span>
                 </button>
               </form>
 
               {searchResult && (
-                <div style={{ marginTop: '1.25rem', padding: '0.9rem 1.25rem', background: '#ecfdf5', color: '#065f46', borderRadius: '10px', fontSize: '0.875rem', textAlign: 'center', border: '1px solid #a7f3d0', maxWidth: '600px', margin: '1.25rem auto 0 auto' }}>
+                <div style={{ marginTop: '1.25rem', padding: '0.9rem 1.25rem', background: '#f5f3ff', color: 'var(--color-primary-dark)', borderRadius: '10px', fontSize: '0.875rem', textAlign: 'center', border: '1px solid #ddd6fe', maxWidth: '600px', margin: '1.25rem auto 0 auto' }}>
                   {searchResult}
                 </div>
               )}

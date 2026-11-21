@@ -41,7 +41,7 @@ export interface KontenPublik {
 export interface LayananItem {
   layanan_id: string;
   nama: string;
-  kategori: 'ANC' | 'PERSALINAN' | 'NIFAS' | 'KB' | 'NEWBORN' | 'LAKTASI';
+  kategori: string;
   deskripsi: string;
   durasi_menit: number;
   highlight: string;
@@ -83,7 +83,6 @@ export interface ReservasiData {
   is_pasien_lama: boolean;
 }
 
-
 export interface HargaObatLogItem {
   harga_obat_id: string;
   obat_id: string;
@@ -118,4 +117,36 @@ export interface NotifikasiEmailPasien {
   subjek: string;
   waktu_kirim: string;
   status: 'TERKIRIM' | 'MENUNGGU' | 'GAGAL';
+}
+
+export interface AuditLogItem {
+  log_id: number;
+  waktu: string;
+  user_ref: string;
+  peran: string;
+  aksi: string;
+  tabel: string;
+  id_baris: string;
+  ip_address: string;
+  nilai_lama: string;
+  nilai_baru: string;
+}
+
+export interface EdukasiItem {
+  id: string;
+  kategori: string;
+  judul: string;
+  ringkasan: string;
+  bacaan_menit: number;
+  tanggal: string;
+}
+
+export interface TestimoniItem {
+  id: string;
+  nama: string;
+  usia: string;
+  layanan: string;
+  ulasan: string;
+  bintang: number;
+  avatar_initial: string;
 }

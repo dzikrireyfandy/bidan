@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KLINIK_INFO } from '../api/mockData';
+import { KLINIK_INFO } from '../constants/klinik';
 
 interface HeaderProps {
   onOpenBooking: () => void;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { KLINIK_INFO } from '../api/mockData';
+import { KLINIK_INFO } from '../constants/klinik';
 
 export const Footer: React.FC = () => {
   return (

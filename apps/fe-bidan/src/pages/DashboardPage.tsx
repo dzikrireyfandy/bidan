@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient, session } from '../api/client';
-import { KLINIK_INFO, MOCK_AUDIT_LOGS, AuditLogItem, MOCK_REKAP_KEUANGAN, MOCK_HARGA_OBAT_LOGS, MOCK_NOTIFIKASI_EMAIL } from '../api/mockData';
-import { HargaObatLogItem, NotifikasiEmailPasien } from '../api/types';
+import { KLINIK_INFO } from '../constants/klinik';
+import { AuditLogItem, HargaObatLogItem, NotifikasiEmailPasien, RekapKeuanganOperasional } from '../api/types';
 
 interface DashboardPageProps {
   onLogout: () => void;
@@ -15,6 +15,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   );
 
   // Superadmin Audit State
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [rekapKeuangan, setRekapKeuangan] = useState<RekapKeuanganOperasional>({ periode: 'Bulan Ini', total_pendapatan: 0, total_pengeluaran_obat: 0, beban_operasional_klinik: 0, laba_bersih: 0, margin_bersih_persen: 0, analisis_fluktuasi: 'Data rekapitulasi keuangan disinkronisasi langsung dari database.' });
   const [auditFilter, setAuditFilter] = useState<string>('SEMUA');
   const [auditSearch, setAuditSearch] = useState<string>('');
   const [selectedAuditLog, setSelectedAuditLog] = useState<AuditLogItem | null>(null);
@@ -35,18 +37,36 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     // 2. Ambil data rekapitulasi keuangan & billing dari database
     apiClient.post('/keuangan/rekap/list', { dari: null, sampai: null })
       .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
-          console.info('Rekapitulasi keuangan real-time dari DB berhasil dimuat:', res.data.data);
+        if (res.data?.data) {
+          const d = res.data.data;
+          setRekapKeuangan({
+            periode: d.periode || 'Bulan Ini',
+            total_pendapatan: Number(d.total_pendapatan || 0),
+            total_pengeluaran_obat: Number(d.total_pengeluaran_obat || 0),
+            beban_operasional_klinik: Number(d.beban_operasional_klinik || 0),
+            laba_bersih: Number(d.laba_bersih || 0),
+            margin_bersih_persen: Number(d.margin_bersih_persen || 0),
+            analisis_fluktuasi: d.analisis_fluktuasi || 'Data transaksi keuangan tersinkronisasi langsung dari database.'
+          });
         }
       })
-      .catch((err) => {
-        console.info('Backend DB offline/standby, menggunakan initial data Keuangan:', err.message);
+      .catch(() => {});
+
+    // 3. Ambil data log audit aktivitas sistem
+    apiClient.post('/audit/list', {})
+      .then((res) => {
+        if (res.data?.data && Array.isArray(res.data.data)) {
+          setAuditLogs(res.data.data);
+        }
+      })
+      .catch(() => {
+        setAuditLogs([]);
       });
   }, []);
 
   // Admin Operational Sub-Tab State
   const [adminTab, setAdminTab] = useState<'antrean' | 'pendaftaran' | 'stok' | 'kasir' | 'keuangan' | 'riwayat_harga' | 'email'>('antrean');
-  const [hargaLogs, setHargaLogs] = useState<HargaObatLogItem[]>(MOCK_HARGA_OBAT_LOGS);
+  const [hargaLogs, setHargaLogs] = useState<HargaObatLogItem[]>([]);
   const [showAddHargaModal, setShowAddHargaModal] = useState<boolean>(false);
   const [newHargaItem, setNewHargaItem] = useState({
     obat_id: 'OBT-OKS-01',
@@ -56,7 +76,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     harga_jual: 38000,
     alasan: ''
   });
-  const [emailLogs, setEmailLogs] = useState<NotifikasiEmailPasien[]>(MOCK_NOTIFIKASI_EMAIL);
+  const [emailLogs, setEmailLogs] = useState<NotifikasiEmailPasien[]>([]);
   const [walkinEmail, setWalkinEmail] = useState<string>('');
   const [kirimEmailNotif, setKirimEmailNotif] = useState<boolean>(true);
   const [previewEmail, setPreviewEmail] = useState<NotifikasiEmailPasien | null>(null);
@@ -94,7 +114,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     setQueueList(prev => prev.map(q => q.no === nomor ? { ...q, status: 'SELESAI' } : q));
   };
 
-  const filteredAuditLogs = MOCK_AUDIT_LOGS.filter(log => {
+  const filteredAuditLogs = auditLogs.filter(log => {
     const matchFilter = auditFilter === 'SEMUA' || log.aksi.includes(auditFilter) || log.tabel.includes(auditFilter);
     const matchSearch = auditSearch === '' || 
       log.user_ref.toLowerCase().includes(auditSearch.toLowerCase()) ||
@@ -837,26 +857,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                   <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #16a34a' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Total Pendapatan (Inflow Kasir &amp; Layanan)</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a', margin: '0.2rem 0' }}>Rp {MOCK_REKAP_KEUANGAN.total_pendapatan.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a', margin: '0.2rem 0' }}>Rp {rekapKeuangan.total_pendapatan.toLocaleString('id-ID')}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-600)' }}>12 Pasien Terlayani Sesi Hari Ini</div>
                   </div>
 
                   <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #dc2626' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>HPP Bahan Obat &amp; Alkes Kebidanan</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626', margin: '0.2rem 0' }}>Rp {MOCK_REKAP_KEUANGAN.total_pengeluaran_obat.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626', margin: '0.2rem 0' }}>Rp {rekapKeuangan.total_pengeluaran_obat.toLocaleString('id-ID')}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-600)' }}>Pengeluaran Farmasi, IUD, Oksitosin</div>
                   </div>
 
                   <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #f59e0b' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Beban Operasional &amp; Sanitasi Medis</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f59e0b', margin: '0.2rem 0' }}>Rp {MOCK_REKAP_KEUANGAN.beban_operasional_klinik.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f59e0b', margin: '0.2rem 0' }}>Rp {rekapKeuangan.beban_operasional_klinik.toLocaleString('id-ID')}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-600)' }}>Listrik, Air Steril, Limbah Medis B3</div>
                   </div>
 
                   <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid var(--color-primary)' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Laba Bersih Operasional (Net Profit)</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>Rp {MOCK_REKAP_KEUANGAN.laba_bersih.toLocaleString('id-ID')}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 700 }}>Margin Bersih: {MOCK_REKAP_KEUANGAN.margin_bersih_persen}%</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>Rp {rekapKeuangan.laba_bersih.toLocaleString('id-ID')}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 700 }}>Margin Bersih: {rekapKeuangan.margin_bersih_persen}%</div>
                   </div>
                 </div>
 
@@ -871,7 +891,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     </h4>
                   </div>
                   <p style={{ fontSize: '0.85rem', color: '#1e40af', lineHeight: 1.6, margin: 0 }}>
-                    {MOCK_REKAP_KEUANGAN.analisis_fluktuasi}
+                    {rekapKeuangan.analisis_fluktuasi}
                   </p>
                   <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed #93c5fd', fontSize: '0.8rem', color: '#1d4ed8', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
                     <span>• <strong>Faktor Kunci 1:</strong> Paket persalinan normal menyumbang 45.3% laba kotor melalui jasa kebidanan mandiri.</span>

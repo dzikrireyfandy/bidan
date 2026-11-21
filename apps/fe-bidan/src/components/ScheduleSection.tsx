@@ -1,12 +1,54 @@
-import React from 'react';
-import { MOCK_SESI_HARI_INI, KLINIK_INFO } from '../api/mockData';
+import React, { useState, useEffect } from 'react';
+import { apiClient } from '../api/client';
+import { KLINIK_INFO } from '../constants/klinik';
+import { SesiPraktikItem } from '../api/types';
 
 interface ScheduleSectionProps {
   onOpenBooking: () => void;
   isLoading?: boolean;
 }
 
-export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ onOpenBooking, isLoading = false }) => {
+export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ onOpenBooking, isLoading: propLoading = false }) => {
+  const [sesiList, setSesiList] = useState<SesiPraktikItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Tarik daftar sesi dan kuota langsung dari database backend
+    apiClient.post<{ success: boolean; data: any[] }>('/public/sesi/list', {})
+      .then((res) => {
+        if (res.data?.success && Array.isArray(res.data.data)) {
+          const mapped: SesiPraktikItem[] = res.data.data.map((s: any, idx: number) => {
+            const kuotaMaks = Number(s.kuota_maks || 15);
+            const sisa = typeof s.sisa_kuota === 'number' ? s.sisa_kuota : kuotaMaks;
+            const terisi = kuotaMaks - sisa;
+            return {
+              sesi_id: s.jadwal_id || s.sesi_id || `SESI-${idx}`,
+              nama: s.nama || (idx === 0 ? 'Sesi Pagi' : 'Sesi Sore'),
+              jam_mulai: s.jam_mulai || (idx === 0 ? '08:00' : '16:00'),
+              jam_selesai: s.jam_selesai || (idx === 0 ? '12:00' : '20:00'),
+              kuota_maks: kuotaMaks,
+              durasi_per_pasien: s.durasi_per_pasien || 20,
+              terisi: terisi >= 0 ? terisi : 0,
+              sisa_kuota: sisa >= 0 ? sisa : 0,
+              status: sisa <= 0 ? 'PENUH' : 'BUKA',
+              keterangan: s.keterangan || (idx === 0 ? 'Pemeriksaan kehamilan rutin, konsultasi USG dasar, dan imunisasi TT.' : 'Pelayanan KB, asuhan nifas, konsultasi pasca melahirkan, dan perawatan bayi.')
+            };
+          });
+          setSesiList(mapped);
+        } else {
+          setSesiList([]);
+        }
+      })
+      .catch(() => {
+        setSesiList([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  const isShowLoading = propLoading || loading;
+
   return (
     <section id="jadwal" style={{ padding: '5rem 0', background: '#ffffff', borderBottom: '1px solid var(--border-light)' }}>
       <div className="container">
@@ -18,10 +60,10 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ onOpenBooking,
             </svg>
             <span>Jadwal Operasional</span>
           </div>
-          <h2 className="section-title">Waktu Layanan & Sesi Praktik</h2>
+          <h2 className="section-title">Waktu Layanan &amp; Sesi Praktik</h2>
           <p className="section-subtitle">
             Pelayanan persalinan siaga 24 jam penuh. Pemeriksaan kehamilan dan konsultasi 
-            terbagi dalam 2 sesi teratur untuk kenyamanan antrean Anda.
+            terbagi dalam sesi teratur untuk kenyamanan antrean Anda.
           </p>
         </div>
 
@@ -50,7 +92,7 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ onOpenBooking,
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Pelayanan Persalinan & Gawat Darurat Kebidanan</h3>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Pelayanan Persalinan &amp; Gawat Darurat Kebidanan</h3>
                 <span style={{ fontSize: '0.75rem', fontWeight: 800, background: '#ef4444', color: '#ffffff', padding: '0.2rem 0.6rem', borderRadius: '9999px' }}>
                   24 JAM NON-STOP
                 </span>
@@ -74,14 +116,23 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ onOpenBooking,
         </div>
 
         {/* Regular Consultation Sessions */}
-        {isLoading ? (
+        {isShowLoading ? (
           <div className="schedule-grid">
             <div className="skeleton" style={{ height: '220px', borderRadius: '18px' }}></div>
             <div className="skeleton" style={{ height: '220px', borderRadius: '18px' }}></div>
           </div>
+        ) : sesiList.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem 1rem', background: '#faf8fc', borderRadius: '16px', border: '1px dashed var(--border-medium)', color: 'var(--color-slate-500)' }}>
+            <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-slate-700)', marginBottom: '0.25rem' }}>
+              Jadwal Sesi Belum Diterbitkan di Database
+            </p>
+            <p style={{ fontSize: '0.875rem' }}>
+              Hubungi langsung bidan melalui WhatsApp/Telepon untuk konfirmasi ketersediaan jadwal hari ini.
+            </p>
+          </div>
         ) : (
           <div className="schedule-grid">
-            {MOCK_SESI_HARI_INI.map((sesi) => (
+            {sesiList.map((sesi) => (
               <div key={sesi.sesi_id} className="schedule-card card-hover" style={{ background: '#faf8fc' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
                   <div>

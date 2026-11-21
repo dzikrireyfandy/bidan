@@ -11,29 +11,14 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHome, initialRole = 'admin' }) => {
   const [selectedRole, setSelectedRole] = useState<'superadmin' | 'admin' | 'bidan' | 'pasien'>(initialRole);
-  const [identifier, setIdentifier] = useState(
-    initialRole === 'pasien' ? '085377998889' : initialRole === 'bidan' ? 'bidan.ria' : initialRole === 'superadmin' ? 'superadmin' : 'admin.loket'
-  );
-  const [secret, setSecret] = useState('password123');
+  const [identifier, setIdentifier] = useState('');
+  const [secret, setSecret] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleTabChange = (roleKey: 'superadmin' | 'admin' | 'bidan' | 'pasien') => {
     setSelectedRole(roleKey);
     setError(null);
-    if (roleKey === 'pasien') {
-      setIdentifier('085377998889');
-      setSecret('password123');
-    } else if (roleKey === 'bidan') {
-      setIdentifier('bidan.ria');
-      setSecret('password123');
-    } else if (roleKey === 'superadmin') {
-      setIdentifier('superadmin');
-      setSecret('password123');
-    } else {
-      setIdentifier('admin.loket');
-      setSecret('password123');
-    }
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -206,7 +191,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
               required
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder={selectedRole === 'pasien' ? 'Contoh: 085377998889' : 'Masukkan ID Pengguna'}
+              placeholder={selectedRole === 'pasien' ? 'Masukkan nomor WhatsApp / NIK terdaftar' : 'Masukkan username petugas'}
               style={{ width: '100%', padding: '0.75rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
             />
           </div>
@@ -220,7 +205,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
               required
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
-              placeholder="Masukkan sandi akses"
+              placeholder="Masukkan kata sandi"
               style={{ width: '100%', padding: '0.75rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
             />
           </div>

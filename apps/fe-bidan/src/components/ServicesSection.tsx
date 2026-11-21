@@ -1,5 +1,5 @@
-import React from 'react';
-import { MOCK_LAYANAN } from '../api/mockData';
+import React, { useState, useEffect } from 'react';
+import { apiClient } from '../api/client';
 import { LayananItem } from '../api/types';
 
 interface ServicesSectionProps {
@@ -7,7 +7,46 @@ interface ServicesSectionProps {
   isLoading?: boolean;
 }
 
-export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectService, isLoading = false }) => {
+export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectService, isLoading: propLoading = false }) => {
+  const [layananList, setLayananList] = useState<LayananItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Tarik daftar layanan aktif langsung dari tabel [Layanan_Medis] di database backend
+    apiClient.post<{ success: boolean; data: any[] }>('/public/layanan/list', {})
+      .then((res) => {
+        if (res.data?.success && Array.isArray(res.data.data)) {
+          const mapped: LayananItem[] = res.data.data.map((l: any) => ({
+            layanan_id: l.layanan_id || l.kode || 'LAY-0',
+            nama: l.nama || 'Layanan Medis',
+            kategori: l.kategori || 'Kebidanan',
+            deskripsi: l.deskripsi || `Layanan asuhan medis kebidanan ${l.nama} di Praktik Mandiri Bidan Ria Indrasti.`,
+            durasi_menit: l.durasi_menit || 30,
+            highlight: l.highlight || 'Pelayanan Standar Medis',
+            icon: (l.kategori || '').toLowerCase().includes('anc') ? 'anc'
+                : (l.kategori || '').toLowerCase().includes('salin') ? 'persalinan'
+                : (l.kategori || '').toLowerCase().includes('kb') ? 'kb'
+                : (l.kategori || '').toLowerCase().includes('bayi') ? 'newborn'
+                : 'anc',
+            cakupan: Array.isArray(l.cakupan) ? l.cakupan : [
+              'Pemeriksaan klinis langsung oleh bidan berizin resmi',
+              'Pencatatan data medis ke Rekam Medis Elektronik (RME)',
+              'Konseling & pemantauan kesehatan berkala'
+            ]
+          }));
+          setLayananList(mapped);
+        } else {
+          setLayananList([]);
+        }
+      })
+      .catch(() => {
+        setLayananList([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
   const renderIcon = (iconType: string) => {
     switch (iconType) {
       case 'anc':
@@ -58,6 +97,8 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
     }
   };
 
+  const isShowLoading = propLoading || loading;
+
   return (
     <section id="layanan" style={{ padding: '5.5rem 0', background: 'var(--bg-page)' }}>
       <div className="container">
@@ -76,8 +117,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
           </p>
         </div>
 
-        {/* Services Grid (Without Prices & Without Vaccines) */}
-        {isLoading ? (
+        {isShowLoading ? (
           <div className="services-grid">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="card-hover" style={{ padding: '1.85rem', height: '340px' }}>
@@ -93,9 +133,18 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
               </div>
             ))}
           </div>
+        ) : layananList.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3.5rem 1rem', background: '#ffffff', borderRadius: '16px', border: '1px dashed var(--border-medium)', color: 'var(--color-slate-500)' }}>
+            <p style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-slate-800)', marginBottom: '0.5rem' }}>
+              Belum Ada Layanan di Database
+            </p>
+            <p style={{ fontSize: '0.875rem', maxWidth: '480px', margin: '0 auto' }}>
+              Daftar layanan medis akan muncul otomatis setelah data di tabel Layanan_Medis diaktifkan oleh admin.
+            </p>
+          </div>
         ) : (
           <div className="services-grid">
-            {MOCK_LAYANAN.map((item) => (
+            {layananList.map((item) => (
               <div key={item.layanan_id} className="service-card card-hover">
                 <div className="service-card-top">
                   <div className="service-icon-box icon-wrapper">

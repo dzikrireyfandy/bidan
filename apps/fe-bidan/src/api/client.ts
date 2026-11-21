@@ -31,7 +31,7 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 401) {
       session.bersihkan();
-      if (window.location.pathname !== '/login') {
+      if (window.location.pathname.startsWith('/app') || window.location.pathname === '/login') {
         window.location.href = '/login';
       }
     }

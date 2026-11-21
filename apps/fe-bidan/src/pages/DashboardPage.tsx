@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiClient } from '../api/client';
+import { apiClient, session } from '../api/client';
 import { KLINIK_INFO, MOCK_AUDIT_LOGS, AuditLogItem, MOCK_REKAP_KEUANGAN, MOCK_HARGA_OBAT_LOGS, MOCK_NOTIFIKASI_EMAIL } from '../api/mockData';
 import { HargaObatLogItem, NotifikasiEmailPasien } from '../api/types';
 
@@ -215,7 +215,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
 
           <button
             type="button"
-            onClick={onLogout}
+            onClick={() => { session.bersihkan(); onLogout(); }}
             className="btn btn-secondary"
             style={{ padding: '0.45rem 0.85rem', fontSize: '0.8125rem', color: '#dc2626' }}
           >

@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { apiClient, session } from '../api/client';
+import { pesanErrorApi } from '../api/errors';
+import type { ApiSuccess, LoginResponse } from '../api/types';
 
 interface LoginPageProps {
   onLoginSuccess: (role: 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN') => void;
@@ -9,43 +12,63 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHome, initialRole = 'admin' }) => {
   const [selectedRole, setSelectedRole] = useState<'superadmin' | 'admin' | 'bidan' | 'pasien'>(initialRole);
   const [identifier, setIdentifier] = useState(
-    initialRole === 'pasien' ? '085377998889' : initialRole === 'bidan' ? 'bidan.ria' : initialRole === 'superadmin' ? 'superadmin.ria' : 'admin.ria'
+    initialRole === 'pasien' ? '085377998889' : initialRole === 'bidan' ? 'bidan.ria' : initialRole === 'superadmin' ? 'superadmin' : 'admin.loket'
   );
   const [secret, setSecret] = useState('password123');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleTabChange = (roleKey: 'superadmin' | 'admin' | 'bidan' | 'pasien') => {
     setSelectedRole(roleKey);
+    setError(null);
     if (roleKey === 'pasien') {
       setIdentifier('085377998889');
-      setSecret('123456');
+      setSecret('password123');
     } else if (roleKey === 'bidan') {
       setIdentifier('bidan.ria');
       setSecret('password123');
     } else if (roleKey === 'superadmin') {
-      setIdentifier('superadmin.ria');
+      setIdentifier('superadmin');
       setSecret('password123');
     } else {
-      setIdentifier('admin.ria');
+      setIdentifier('admin.loket');
       setSecret('password123');
     }
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
 
-    setTimeout(() => {
-      let roleType: 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN' = 'ADMIN_LOKAL';
-      if (selectedRole === 'superadmin') roleType = 'SUPERADMIN';
-      if (selectedRole === 'bidan') roleType = 'DOKTER';
-      if (selectedRole === 'pasien') roleType = 'PASIEN';
+    try {
+      // PANGGIL LANGSUNG ENDPOINT BACKEND /auth/login KE DATABASE SQL
+      const response = await apiClient.post<ApiSuccess<LoginResponse>>('/auth/login', {
+        username: identifier,
+        password: secret,
+      });
 
-      localStorage.setItem('bidan_access_token', `token_mock_${selectedRole}_${Date.now()}`);
-      localStorage.setItem('bidan_user_role', roleType);
+      if (response.data && response.data.success) {
+        const { token, peran } = response.data.data;
+        session.simpanToken(token);
+        
+        let roleType: 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN' = 'ADMIN_LOKAL';
+        if (peran === 'SUPERADMIN') roleType = 'SUPERADMIN';
+        else if (peran === 'DOKTER') roleType = 'DOKTER';
+        else if (peran === 'PASIEN') roleType = 'PASIEN';
+        else roleType = 'ADMIN_LOKAL';
+
+        localStorage.setItem('bidan_user_role', roleType);
+        setLoading(false);
+        onLoginSuccess(roleType);
+        return;
+      }
+    } catch (err: unknown) {
+      const msg = pesanErrorApi(err, 'Gagal masuk. Periksa kembali username dan kata sandi di database.');
+      setError(msg);
+    } finally {
       setLoading(false);
-      onLoginSuccess(roleType);
-    }, 350);
+    }
   };
 
   return (
@@ -137,8 +160,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
               gap: '0.15rem'
             }}
           >
-            <span>Admin</span>
-            <span style={{ fontSize: '0.625rem', fontWeight: 500, color: selectedRole === 'admin' ? 'var(--color-primary)' : 'var(--color-slate-400)' }}>Operasional</span>
+            <span>Admin Loket</span>
+            <span style={{ fontSize: '0.625rem', fontWeight: 500, color: selectedRole === 'admin' ? 'var(--color-primary)' : 'var(--color-slate-400)' }}>Antrean</span>
           </button>
 
           <button
@@ -164,7 +187,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
           </button>
         </div>
 
-        {/* Clean Login Form */}
+        {/* Error Alert from Real Backend API */}
+        {error && (
+          <div style={{ marginBottom: '1.25rem', padding: '0.85rem 1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', color: '#b91c1c', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Clean Login Form connected to backend POST /api/v1/auth/login */}
         <form onSubmit={handleFormSubmit}>
           <div style={{ marginBottom: '1.15rem' }}>
             <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
@@ -182,7 +213,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
 
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
-              {selectedRole === 'pasien' ? 'PIN / Tanggal Kontrol' : 'Kata Sandi'}
+              Kata Sandi
             </label>
             <input
               type="password"
@@ -200,7 +231,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
             className="btn btn-primary btn-shimmer"
             style={{ width: '100%', padding: '0.85rem', fontSize: '0.9375rem', fontWeight: 700 }}
           >
-            {loading ? 'Memverifikasi...' : `Masuk sebagai ${selectedRole === 'pasien' ? 'Pasien' : selectedRole === 'bidan' ? 'Bidan Ria' : selectedRole === 'superadmin' ? 'Superadmin (Log Audit)' : 'Admin Klinik (Operasional)'}`}
+            {loading ? 'Memverifikasi ke Database...' : `Masuk sebagai ${selectedRole === 'pasien' ? 'Pasien' : selectedRole === 'bidan' ? 'Bidan Ria' : selectedRole === 'superadmin' ? 'Superadmin (Log Audit)' : 'Admin Klinik (Operasional)'}`}
           </button>
         </form>
 

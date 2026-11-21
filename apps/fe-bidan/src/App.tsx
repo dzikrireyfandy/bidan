@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { PublicHomePage } from './pages/PublicHomePage';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { session } from './api/client';
 import './styles.css';
 
 type AppView = 'home' | 'login' | 'dashboard';
@@ -12,7 +13,7 @@ export function App() {
   const [initialLoginRole, setInitialLoginRole] = useState<'superadmin' | 'admin' | 'bidan' | 'pasien'>('admin');
 
   useEffect(() => {
-    const token = localStorage.getItem('bidan_access_token');
+    const token = session.bacaToken();
     const savedRole = localStorage.getItem('bidan_user_role') as 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN';
     if (token && savedRole) {
       setActiveRole(savedRole);
@@ -39,8 +40,7 @@ export function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('bidan_access_token');
-    localStorage.removeItem('bidan_user_role');
+    session.bersihkan();
     setCurrentView('home');
     window.history.pushState({}, '', '/');
   };
@@ -80,4 +80,5 @@ export function App() {
     </div>
   );
 }
+
 export default App;

@@ -1,7 +1,32 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiClient } from '../api/client';
 import { MOCK_EDUKASI } from '../api/mockData';
+import type { KontenPublik } from '../api/types';
 
 export const EducationSection: React.FC = () => {
+  const [items, setItems] = useState(MOCK_EDUKASI);
+
+  useEffect(() => {
+    // Ambil data konten edukasi & pengumuman langsung dari database backend
+    apiClient.post<{ success: boolean; data: KontenPublik[] }>('/public/konten/list', { limit: 10 })
+      .then((res) => {
+        if (res.data?.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
+          const mapped = res.data.data.map((k: KontenPublik, idx: number) => ({
+            id: k.konten_id || `KNT-${idx}`,
+            judul: k.judul,
+            ringkasan: k.isi,
+            kategori: k.tipe || 'Edukasi Medis',
+            bacaan_menit: 4,
+            tanggal: k.updated_at ? new Date(k.updated_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Hari ini'
+          }));
+          setItems(mapped);
+        }
+      })
+      .catch((err) => {
+        console.info('Backend database offline/standby, menggunakan initial data edukasi:', err.message);
+      });
+  }, []);
+
   return (
     <section style={{ padding: '5rem 0', background: '#ffffff', borderTop: '1px solid var(--border-light)' }}>
       <div className="container">
@@ -13,14 +38,14 @@ export const EducationSection: React.FC = () => {
             </svg>
             <span>Informasi Kesehatan</span>
           </div>
-          <h2 className="section-title">Edukasi Ibu & Anak</h2>
+          <h2 className="section-title">Edukasi Ibu &amp; Anak</h2>
           <p className="section-subtitle">
-            Panduan medis praktis seputar kehamilan, perawatan bayi, dan kesehatan reproduksi.
+            Panduan medis praktis seputar kehamilan, perawatan bayi, dan kesehatan reproduksi dari database klinik.
           </p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.75rem' }}>
-          {MOCK_EDUKASI.map((edu) => (
+          {items.map((edu) => (
             <article key={edu.id} className="card-hover" style={{ padding: '1.85rem', background: '#faf8fc', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>

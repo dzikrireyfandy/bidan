@@ -10,8 +10,8 @@ export const tagihanListSchema = z.object({
 
 export const bayarSchema = z.object({
   jumlah: z.number().positive(),
-  metode: z.enum(['TUNAI', 'TRANSFER', 'KARTU', 'BPJS', 'ASURANSI']),
-  jenis: z.enum(['PENUH', 'SEBAGIAN']).default('PENUH'),
+  metode: z.enum(['TUNAI', 'TRANSFER', 'KARTU', 'QRIS']),
+  jenis: z.enum(['UANG_MUKA', 'CICILAN', 'PELUNASAN']).default('PELUNASAN'),
   penjamin_id: z.string().uuid().optional()
 });
 

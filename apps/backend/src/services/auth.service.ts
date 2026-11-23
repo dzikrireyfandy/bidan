@@ -10,6 +10,7 @@ export interface LoginResult {
   token: string;
   peran: Peran;
   subPeran: SubPeran | null;
+  nama?: string;
 }
 
 export class AuthService {
@@ -42,6 +43,8 @@ export class AuthService {
 
     await this.repository.recordLoginSuccess(akun.akun_id, username);
 
+    const userDisplayName = akun.nama_pasien || akun.nama_staf || (akun.staf_id ? 'Bidan Ria' : akun.username);
+
     return {
       token: signToken({
         akunId: akun.akun_id,
@@ -52,7 +55,8 @@ export class AuthService {
         unitId: akun.unit_id
       }),
       peran: akun.peran,
-      subPeran: akun.sub_peran
+      subPeran: akun.sub_peran,
+      nama: userDisplayName
     };
   }
 

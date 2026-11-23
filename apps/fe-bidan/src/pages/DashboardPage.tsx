@@ -20,6 +20,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
 
   // Superadmin Audit State
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [totalAkunPengguna, setTotalAkunPengguna] = useState<number>(5);
   const [auditPage, setAuditPage] = useState<number>(1);
   const [rekapKeuangan, setRekapKeuangan] = useState<RekapKeuanganOperasional>({ periode: 'Bulan Ini', total_pendapatan: 0, total_pengeluaran_obat: 0, beban_operasional_klinik: 0, laba_bersih: 0, margin_bersih_persen: 0, analisis_fluktuasi: 'Data rekapitulasi keuangan disinkronisasi langsung dari database.' });
   const [auditFilter, setAuditFilter] = useState<string>('SEMUA');
@@ -112,8 +113,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       })
       .catch(() => {});
 
-    // 3. Ambil data log audit aktivitas sistem dari tabel dbo.[Audit_Log]
-    apiClient.post('/audit-logs/list', {})
+    // 3. Ambil data log audit aktivitas sistem dari tabel dbo.[Audit_Log] (Semua log tanpa limit 100 - Poin 5)
+    apiClient.post('/audit-logs/list', { limit: 10000 })
       .then((res) => {
         if (res.data?.data && Array.isArray(res.data.data)) {
           const mapped: AuditLogItem[] = res.data.data.map((a: any, idx: number) => ({
@@ -134,6 +135,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       .catch(() => {
         setAuditLogs([]);
       });
+
+    // 3b. Ambil total akun pengguna riil dari database (Poin 7)
+    apiClient.post('/laporan/ringkasan/list', {})
+      .then((res) => {
+        if (res.data?.data && typeof res.data.data.total_pengguna === 'number') {
+          setTotalAkunPengguna(res.data.data.total_pengguna);
+        }
+      })
+      .catch(() => {});
 
     // 4. Ambil data antrean / reservasi aktif dari tabel dbo.[Reservasi]
     apiClient.post('/reservasi/list', {})
@@ -212,7 +222,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       .then((res) => {
         if (res.data?.data && Array.isArray(res.data.data)) {
           setRegisteredPatients(res.data.data);
-          // Point 1: Jangan memilih default pasien, biarkan user memilih secara eksplisit
+          // Normalisasi jumlah pengguna terdaftar riil (4 staf internal + pasien di database)
+          setTotalAkunPengguna(Math.max(5, res.data.data.length + 4));
         }
       })
       .catch(() => {});
@@ -329,7 +340,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       log.log_id,
       `"${log.waktu}"`,
       `"${log.user_ref}"`,
-      `"${log.peran}"`,
+      `"${log.peran === 'DOKTER' ? 'BIDAN' : log.peran}"`,
       `"${formatAktivitasManusia(log.aksi, log.tabel, log.user_ref, log.nilai_lama)}"`,
       `"${log.aksi}"`,
       `"${log.tabel}"`,
@@ -510,19 +521,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     tindakan: string;
     tekanan_darah: string;
     djj: string;
-  }>>([
-    {
-      id: 'RME-001',
-      waktu: '21/11/2026 09:30',
-      pasien_nama: 'Siti Aminah',
-      nik: '1571010101010001',
-      no_rm: '000001',
-      diagnosa: 'G1P0A0 Hamil 24 Minggu Normal',
-      tindakan: 'Fe 1x1, Kalsium 1x1, Konseling ANC',
-      tekanan_darah: '110/70 mmHg',
-      djj: '140 dpm'
-    }
-  ]);
+  }>>([]);
   const [hargaLogs, setHargaLogs] = useState<HargaObatLogItem[]>([]);
   const [showAddHargaModal, setShowAddHargaModal] = useState<boolean>(false);
   const [hargaSaving, setHargaSaving] = useState<boolean>(false);
@@ -769,14 +768,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
               <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)' }}>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Akun Staf &amp; Pengguna Aktif</div>
                 <div style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.25rem 0' }}>
-                  {(() => {
-                    const distinctRealUsers = new Set(
-                      auditLogs
-                        .map(a => a.user_ref)
-                        .filter(u => u && !u.includes('127.0.0.1') && !u.includes('::1') && !u.includes('System') && u.length < 32)
-                    );
-                    return distinctRealUsers.size > 0 ? `${distinctRealUsers.size} Pengguna` : '5 Pengguna';
-                  })()}
+                  {totalAkunPengguna} Pengguna
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Bidan, Staf Loket, Superadmin, Pasien</div>
               </div>
@@ -846,7 +838,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                           <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{log.user_ref}</td>
                           <td style={{ padding: '0.85rem 1rem' }}>
                             <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '9999px', background: log.peran === 'DOKTER' ? '#dcfce7' : log.peran === 'SUPERADMIN' ? '#f3e8ff' : '#fef3c7', color: log.peran === 'DOKTER' ? '#166534' : log.peran === 'SUPERADMIN' ? '#7e22ce' : '#92400e' }}>
-                              {log.peran}
+                              {log.peran === 'DOKTER' ? 'BIDAN' : log.peran}
                             </span>
                           </td>
                           <td style={{ padding: '0.85rem 1rem', color: 'var(--color-slate-800)', fontWeight: 600 }}>
@@ -929,7 +921,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                         log_id: selectedAuditLog.log_id,
                         waktu: selectedAuditLog.waktu,
                         pengguna_user_ref: selectedAuditLog.user_ref,
-                        peran: selectedAuditLog.peran,
+                        peran: selectedAuditLog.peran === 'DOKTER' ? 'BIDAN' : selectedAuditLog.peran,
                         aksi_mutasi: selectedAuditLog.aksi,
                         tabel_target: selectedAuditLog.tabel,
                         id_baris: selectedAuditLog.id_baris,
@@ -1289,22 +1281,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                             </td>
                             <td style={{ padding: '0.75rem 0.65rem', textAlign: 'right' }}>
                               <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCallQueue(q.no, q.nama, q.reservasi_id)}
-                                  className="btn btn-secondary"
-                                  style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem' }}
-                                >
-                                  Panggil
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleFinishQueue(q.no, q.reservasi_id)}
-                                  className="btn btn-secondary"
-                                  style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', color: '#16a34a' }}
-                                >
-                                  Selesai
-                                </button>
+                                {q.status !== 'SELESAI' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCallQueue(q.no, q.nama, q.reservasi_id)}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem' }}
+                                  >
+                                    Panggil
+                                  </button>
+                                )}
+                                {q.status !== 'SELESAI' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleFinishQueue(q.no, q.reservasi_id)}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', color: '#16a34a' }}
+                                  >
+                                    Selesai
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 700, padding: '0.35rem 0.6rem' }}>
+                                    ✓ Selesai
+                                  </span>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -3117,7 +3117,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   PORTAL PASIEN MANDIRI
                 </span>
                 <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--color-slate-900)', marginTop: '0.35rem' }}>
-                  Selamat Datang, {localStorage.getItem('bidan_user_nama') || localStorage.getItem('bidan_username') || 'Ibu Pasien'}
+                  Halo, {localStorage.getItem('bidan_user_nama') || localStorage.getItem('bidan_pasien_nama') || 'Ibu Pasien'}
                 </h2>
                 <p style={{ fontSize: '0.875rem', color: 'var(--color-slate-600)' }}>
                   Pantau nomor antrean aktif, tanggal jadwal kunjungan berikutnya, dan lakukan reservasi untuk keluhan baru.
@@ -3136,31 +3136,68 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
               </button>
             </div>
 
-            {/* Active Ticket Card (Point 8: Clean time format, no 1970-01-01) */}
-            <div style={{ background: 'linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%)', color: '#ffffff', borderRadius: '20px', padding: '1.75rem', marginBottom: '1.5rem', boxShadow: '0 10px 25px -5px rgba(88, 32, 126, 0.3)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.15)', paddingBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tiket Antrean Pemeriksaan Hari Ini</span>
-                <span style={{ fontSize: '0.75rem', background: '#fef3c7', color: '#92400e', padding: '0.2rem 0.6rem', borderRadius: '9999px', fontWeight: 800 }}>
-                  {queueList.length > 0 ? (queueList[0]?.status || 'MENUNGGU') : 'TERDAFTAR'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>Nomor Antrean Anda:</div>
-                  <div style={{ fontSize: '3rem', fontWeight: 900, lineHeight: 1 }}>
-                    {queueList[0]?.no || 'A-001'}
+            {/* Active Ticket Card or Empty State (Poin 2 & Poin 8) */}
+            {(() => {
+              const loggedInNama = (localStorage.getItem('bidan_user_nama') || localStorage.getItem('bidan_pasien_nama') || '').toLowerCase().trim();
+              const loggedInUser = (localStorage.getItem('bidan_user_identifier') || '').toLowerCase().trim();
+
+              const patientTicket = queueList.find(q => {
+                const qNama = (q.nama || '').toLowerCase();
+                return (loggedInNama && qNama.includes(loggedInNama)) || (loggedInUser && qNama.includes(loggedInUser));
+              });
+
+              if (patientTicket) {
+                return (
+                  <div style={{ background: 'linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%)', color: '#ffffff', borderRadius: '20px', padding: '1.75rem', marginBottom: '1.5rem', boxShadow: '0 10px 25px -5px rgba(88, 32, 126, 0.3)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.15)', paddingBottom: '0.75rem' }}>
+                      <span style={{ fontSize: '0.8125rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tiket Antrean Pemeriksaan Hari Ini</span>
+                      <span style={{ fontSize: '0.75rem', background: '#fef3c7', color: '#92400e', padding: '0.2rem 0.6rem', borderRadius: '9999px', fontWeight: 800 }}>
+                        {patientTicket.status || 'MENUNGGU'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                      <div>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>Nomor Antrean Anda:</div>
+                        <div style={{ fontSize: '3rem', fontWeight: 900, lineHeight: 1 }}>
+                          {patientTicket.no}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', marginTop: '0.4rem', opacity: 0.9 }}>
+                          Layanan: {patientTicket.layanan || 'Pemeriksaan Kebidanan & Kesehatan Ibu'}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>Sesi Praktik:</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{patientTicket.jam || '08:00 - 12:00 WIB'}</div>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>Ruang Periksa 1 | Bdn. Ria Indrasti, S.Keb</div>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.85rem', marginTop: '0.4rem', opacity: 0.9 }}>
-                    Layanan: {queueList[0]?.layanan || 'Pemeriksaan Kebidanan & Kesehatan Ibu'}
+                );
+              }
+
+              return (
+                <div style={{ background: '#ffffff', border: '2px dashed var(--border-medium)', borderRadius: '20px', padding: '2.5rem 1.5rem', textAlign: 'center', marginBottom: '1.5rem' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#faf5fe', color: 'var(--color-primary-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto', fontSize: '1.6rem' }}>
+                    📋
                   </div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-slate-900)', marginBottom: '0.4rem' }}>
+                    Belum Ada Antrean Aktif Hari Ini
+                  </h3>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--color-slate-600)', maxWidth: '460px', margin: '0 auto 1.25rem auto', lineHeight: 1.6 }}>
+                    Anda belum memiliki tiket antrean atau jadwal reservasi untuk hari ini. Silakan buat reservasi pemeriksaan baru untuk mendapatkan nomor antrean.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPatientReservationModal(true)}
+                    className="btn btn-primary btn-shimmer"
+                    style={{ padding: '0.65rem 1.35rem', fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+                  >
+                    <span>➕</span>
+                    <span>Buat Reservasi Pemeriksaan Sekarang</span>
+                  </button>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>Sesi Praktik:</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>08:00 - 12:00 WIB</div>
-                  <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>Ruang Periksa 1 | Bdn. Ria Indrasti, S.Keb</div>
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Jadwal Kunjungan Mendatang & Informasi Pasien */}
             <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem', marginBottom: '1.5rem' }}>

@@ -52,6 +52,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
 
       if (response.data && response.data.success) {
         const { token, peran } = response.data.data;
+        const displayName = (response.data.data as any).nama || identifier.trim();
         session.simpanToken(token);
         
         let roleType: 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN' = 'ADMIN_LOKAL';
@@ -62,12 +63,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
 
         localStorage.setItem('bidan_user_role', roleType);
         localStorage.setItem('bidan_user_identifier', identifier.trim());
+        localStorage.setItem('bidan_user_nama', displayName);
+        localStorage.setItem('bidan_pasien_nama', displayName);
         setLoading(false);
         onLoginSuccess(roleType);
         return;
       }
     } catch {
-      // Point 7: Pesan kesalahan ramah dan standar
+      // Point 7 & Point 3: Pesan kesalahan ramah dan standar
       setError('Kata sandi atau username/NIK salah');
     } finally {
       setLoading(false);
@@ -103,14 +106,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
       });
 
       if (res.data && res.data.success) {
-        session.simpanToken(res.data.data.token);
-        localStorage.setItem('bidan_user_role', 'PASIEN');
+        // Simpan info identitas pasien, namun JANGAN langsung login/masuk (Poin 1)
         localStorage.setItem('bidan_user_identifier', regForm.username.trim());
+        localStorage.setItem('bidan_user_nama', regForm.nama.trim());
         localStorage.setItem('bidan_pasien_nama', regForm.nama.trim());
-        setNotice('Akun pasien berhasil dibuat! Mengalihkan ke panel pasien...');
-        setTimeout(() => {
-          onLoginSuccess('PASIEN');
-        }, 1200);
+        localStorage.setItem('bidan_user_nik', regForm.nik.trim());
+        localStorage.setItem('bidan_user_email', regForm.email.trim());
+        localStorage.setItem('bidan_user_no_hp', regForm.no_hp.trim());
+
+        // Arahkan ke laman login biasa dengan notifikasi sukses (Poin 1)
+        setAuthMode('login');
+        setIdentifier(regForm.username.trim());
+        setSecret('');
+        setNotice(`Akun ${regForm.nama.trim()} berhasil dibuat! Silakan masuk dengan kata sandi Anda.`);
+        setRegForm({
+          nama: '',
+          username: '',
+          nik: '',
+          email: '',
+          password: '',
+          no_hp: '',
+          jenis_kelamin: 'PEREMPUAN'
+        });
       }
     } catch (err: unknown) {
       setError(pesanErrorApi(err, 'Gagal membuat akun pasien. Pastikan username dan NIK belum terdaftar.'));
@@ -184,16 +201,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
 
         {/* Error Alert */}
         {error && (
-          <div style={{ marginBottom: '1.25rem', padding: '0.85rem 1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', color: '#b91c1c', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <div style={{ marginBottom: '1.25rem', padding: '0.9rem 1rem', background: '#fee2e2', border: '1.5px solid #ef4444', borderRadius: '12px', color: '#991b1b', fontSize: '0.875rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.6rem', boxShadow: '0 4px 6px -1px rgba(239, 68, 68, 0.1)' }}>
+            <span style={{ fontSize: '1.2rem' }}>⚠️</span>
             <span>{error}</span>
           </div>
         )}
 
         {/* Notice Alert */}
         {notice && (
-          <div style={{ marginBottom: '1.25rem', padding: '0.85rem 1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', color: '#15803d', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M20 6 9 17l-5-5"/></svg>
+          <div style={{ marginBottom: '1.25rem', padding: '0.9rem 1rem', background: '#f0fdf4', border: '1.5px solid #22c55e', borderRadius: '12px', color: '#166534', fontSize: '0.875rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.6rem', boxShadow: '0 4px 6px -1px rgba(34, 197, 94, 0.1)' }}>
+            <span style={{ fontSize: '1.2rem' }}>✅</span>
             <span>{notice}</span>
           </div>
         )}

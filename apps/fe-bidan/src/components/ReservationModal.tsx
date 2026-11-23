@@ -61,11 +61,17 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
     if (isAlreadyLoggedIn) {
       const savedUser = localStorage.getItem('bidan_user_identifier') || '';
-      const savedNama = localStorage.getItem('bidan_pasien_nama') || '';
+      const savedNama = localStorage.getItem('bidan_pasien_nama') || localStorage.getItem('bidan_user_nama') || '';
+      const savedNik = localStorage.getItem('bidan_user_nik') || '';
+      const savedEmail = localStorage.getItem('bidan_user_email') || '';
+      const savedNoHp = localStorage.getItem('bidan_user_no_hp') || '';
       setFormData(prev => ({
         ...prev,
-        username: savedUser,
-        nama: savedNama || prev.nama
+        username: savedUser || prev.username,
+        nama: savedNama || prev.nama,
+        nik: savedNik || prev.nik,
+        email: savedEmail || prev.email,
+        no_hp: savedNoHp || prev.no_hp
       }));
     }
 

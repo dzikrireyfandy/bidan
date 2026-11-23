@@ -23,9 +23,33 @@ BEGIN
 END
 GO
 
+IF COL_LENGTH('dbo.Pasien', 'email') IS NULL
+BEGIN
+    ALTER TABLE dbo.[Pasien] ADD [email] VARCHAR(254) NULL;
+END
+GO
+
+IF COL_LENGTH('dbo.Staf', 'email') IS NULL
+BEGIN
+    ALTER TABLE dbo.[Staf] ADD [email] VARCHAR(254) NULL;
+END
+GO
+
 IF COL_LENGTH('dbo.Akun_Pengguna', 'sub_peran') IS NULL
 BEGIN
     ALTER TABLE dbo.[Akun_Pengguna] ADD [sub_peran] VARCHAR(20) NULL;
+END
+GO
+
+IF COL_LENGTH('dbo.Audit_Log', 'user_ref') IS NULL
+BEGIN
+    ALTER TABLE dbo.[Audit_Log] ADD [user_ref] NVARCHAR(50) NULL;
+END
+GO
+
+IF COL_LENGTH('dbo.Audit_Log', 'keterangan') IS NULL
+BEGIN
+    ALTER TABLE dbo.[Audit_Log] ADD [keterangan] NVARCHAR(200) NULL;
 END
 GO
 
@@ -68,12 +92,15 @@ DECLARE @peran_dokter UNIQUEIDENTIFIER = (SELECT TOP 1 peran_id FROM dbo.[Peran]
 DECLARE @peran_pasien UNIQUEIDENTIFIER = (SELECT TOP 1 peran_id FROM dbo.[Peran] WHERE kode = 'PASIEN');
 
 -- Hash untuk 'password123' (bcrypt)
-DECLARE @hash_pw VARCHAR(100) = '$2b$10$XAXUweq/JLtVd89O8cqfl.mMMxUqf7vwm.rNob7GyQBne9rC3HFG.';
+DECLARE @hash_pw VARCHAR(100) = '$2b$10$mS3UyJqS2cChIr.tdu4tTu1kDYz9PGc6ur9REIJb4qqwNF2XBTluy';
 
 -- Update password dummy yang lama dengan hash password123 yang valid
 UPDATE dbo.[Akun_Pengguna]
-   SET password_hash = @hash_pw
- WHERE password_hash = 'HASH-DUMMY';
+   SET password_hash = @hash_pw,
+       percobaan_gagal = 0,
+       terkunci_sampai = NULL
+ WHERE username IN ('superadmin', 'admin', 'bidan', 'sitiaminah', 'apoteker1')
+    OR password_hash = 'HASH-DUMMY';
 
 -- Map akun staf yang sudah ada ke kode peran RBAC aplikasi & sediakan username standar
 IF EXISTS (SELECT 1 FROM dbo.[Akun_Pengguna] WHERE username = 'admin_sistem1')

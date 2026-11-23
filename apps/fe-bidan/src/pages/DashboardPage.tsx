@@ -182,6 +182,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   });
   const [emailLogs, setEmailLogs] = useState<NotifikasiEmailPasien[]>([]);
   const [walkinEmail, setWalkinEmail] = useState<string>('');
+  // ponytail: form walk-in khusus ibu (jenis_kelamin/gol_darah/status/pekerjaan default); tambah input bila perlu
+  const [walkinForm, setWalkinForm] = useState({
+    nik: '',
+    nama: '',
+    tgl_lahir: '',
+    tempat_lahir: '',
+    alamat: '',
+    no_telepon: ''
+  });
   const [kirimEmailNotif, setKirimEmailNotif] = useState<boolean>(true);
   const [previewEmail, setPreviewEmail] = useState<NotifikasiEmailPasien | null>(null);
   const [activeQueueNum, setActiveQueueNum] = useState<string>('A-007');
@@ -782,43 +791,117 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   Petugas loket memasukkan data identitas untuk langsung menerbitkan tiket nomor antrean fisik/WhatsApp.
                 </p>
 
-                <form onSubmit={(e) => {
+                <form onSubmit={async (e) => {
                   e.preventDefault();
-                  const newQueue = { no: 'A-011', nama: 'Ny. Dewi Lestari', layanan: 'Pemeriksaan Kehamilan (ANC)', sesi: 'Sesi Pagi', jam: '11:15 WIB', status: 'MENUNGGU' };
-                  setQueueList(prev => [...prev, newQueue]);
-                  if (kirimEmailNotif && walkinEmail) {
-                    const newEmailItem: NotifikasiEmailPasien = {
-                      notif_id: `EML-2026-${Date.now().toString().slice(-4)}`,
-                      pasien_nama: 'Ny. Dewi Lestari',
-                      email_tujuan: walkinEmail,
-                      jenis: 'TIKET_RESERVASI',
-                      subjek: 'Tiket Antrean A-011 - Praktik Mandiri Bidan Ria Indrasti',
-                      waktu_kirim: 'Baru saja',
-                      status: 'TERKIRIM'
-                    };
-                    setEmailLogs(prev => [newEmailItem, ...prev]);
-                    alert(`Pendaftaran sukses! Nomor antrean A-011 berhasil diterbitkan dan E-Tiket telah otomatis dikirimkan ke email: ${walkinEmail}`);
-                  } else {
-                    alert('Pendaftaran sukses! Nomor antrean A-011 berhasil diterbitkan.');
+                  try {
+                    const unitRes = await apiClient.post('/unit-pelayanan/list', {});
+                    const units: any[] = unitRes.data?.data ?? [];
+                    const unit = units.find((u) => String(u.nama ?? '').toLowerCase().includes('kia')) ?? units[0];
+                    if (!unit?.unit_id) {
+                      alert('Unit pelayanan belum tersedia. Hubungi admin.');
+                      return;
+                    }
+                    await apiClient.post('/pasien/walk-in', {
+                      nik: walkinForm.nik,
+                      nama: walkinForm.nama,
+                      jenis_kelamin: 'P',
+                      tgl_lahir: walkinForm.tgl_lahir,
+                      tempat_lahir: walkinForm.tempat_lahir || '-',
+                      alamat: walkinForm.alamat,
+                      no_telepon: walkinForm.no_telepon,
+                      gol_darah: 'O',
+                      status_pernikahan: 'BELUM_MENIKAH',
+                      pekerjaan: 'Lainnya',
+                      email: kirimEmailNotif && walkinEmail ? walkinEmail : undefined,
+                      unit_id: unit.unit_id,
+                      jenis_kunjungan: 'RAWAT_JALAN'
+                    });
+                    const nomor = `A-${String(queueList.length + 1).padStart(3, '0')}`;
+                    setQueueList(prev => [...prev, {
+                      no: nomor,
+                      nama: walkinForm.nama,
+                      layanan: 'Pelayanan Kebidanan',
+                      sesi: 'Sesi Praktik',
+                      jam: '-',
+                      status: 'MENUNGGU'
+                    }]);
+                    alert(`Pendaftaran sukses. Nomor antrean ${nomor} diterbitkan.`);
+                    setWalkinForm({ nik: '', nama: '', tgl_lahir: '', tempat_lahir: '', alamat: '', no_telepon: '' });
+                    setWalkinEmail('');
+                    setAdminTab('antrean');
+                  } catch (err) {
+                    alert(pesanErrorApi(err, 'Gagal mendaftarkan pasien.'));
                   }
-                  setWalkinEmail('');
-                  setAdminTab('antrean');
                 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Nomor Induk Kependudukan (NIK)</label>
-                      <input type="text" required placeholder="16 digit NIK KTP" style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }} />
+                      <input
+                        type="text"
+                        required
+                        placeholder="16 digit NIK KTP"
+                        value={walkinForm.nik}
+                        onChange={(e) => setWalkinForm({ ...walkinForm, nik: e.target.value })}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                      />
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Nama Lengkap Ibu Pasien</label>
-                      <input type="text" required placeholder="Contoh: Ny. Dewi Lestari" style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }} />
+                      <input
+                        type="text"
+                        required
+                        placeholder="Contoh: Ny. Dewi Lestari"
+                        value={walkinForm.nama}
+                        onChange={(e) => setWalkinForm({ ...walkinForm, nama: e.target.value })}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                      />
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                     <div>
+                      <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Tanggal Lahir</label>
+                      <input
+                        type="date"
+                        required
+                        value={walkinForm.tgl_lahir}
+                        onChange={(e) => setWalkinForm({ ...walkinForm, tgl_lahir: e.target.value })}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Tempat Lahir</label>
+                      <input
+                        type="text"
+                        value={walkinForm.tempat_lahir}
+                        onChange={(e) => setWalkinForm({ ...walkinForm, tempat_lahir: e.target.value })}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Alamat Domisili</label>
+                    <input
+                      type="text"
+                      required
+                      value={walkinForm.alamat}
+                      onChange={(e) => setWalkinForm({ ...walkinForm, alamat: e.target.value })}
+                      style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
                       <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Nomor WhatsApp Aktif</label>
-                      <input type="tel" required placeholder="08xxxxxxxxxx" style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }} />
+                      <input
+                        type="tel"
+                        required
+                        placeholder="08xxxxxxxxxx"
+                        value={walkinForm.no_telepon}
+                        onChange={(e) => setWalkinForm({ ...walkinForm, no_telepon: e.target.value })}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                      />
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Pilih Sesi Praktik</label>
@@ -862,7 +945,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                       style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary)' }}
                     />
                     <label htmlFor="kirimEmailNotif" style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-slate-700)', cursor: 'pointer' }}>
-                      Kirimkan E-Tiket antrean &amp; konfirmasi otomatis ke email pasien via SMTP Mailer
+                      Simpan email pasien untuk pengingat kontrol otomatis (H-1)
                     </label>
                   </div>
 

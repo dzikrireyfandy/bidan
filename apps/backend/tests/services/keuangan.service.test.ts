@@ -90,14 +90,14 @@ describe('KeuanganService', () => {
     repo.findTagihan.mockResolvedValue(null);
 
     const err = await ambilError(
-      service.bayar('tagihan-1', { jumlah: 10, metode: 'TUNAI', jenis: 'PENUH' }, 'staf-1')
+      service.bayar('tagihan-1', { jumlah: 10, metode: 'TUNAI', jenis: 'PELUNASAN' }, 'staf-1')
     );
     expect(err).toMatchObject({ statusCode: 404, errorId: 'ERR-FIN-02' });
   });
 
   test('bayar menolak akun tanpa data staf dengan 422', async () => {
     const err = await ambilError(
-      service.bayar('tagihan-1', { jumlah: 10, metode: 'TUNAI', jenis: 'PENUH' }, null)
+      service.bayar('tagihan-1', { jumlah: 10, metode: 'TUNAI', jenis: 'PELUNASAN' }, null)
     );
 
     expect(err).toMatchObject({ statusCode: 422, errorId: 'ERR-VAL-01' });
@@ -108,7 +108,7 @@ describe('KeuanganService', () => {
     repo.findTagihan.mockResolvedValue({ total_tagihan: 1000, total_dibayar: 400 });
 
     const err = await ambilError(
-      service.bayar('tagihan-1', { jumlah: 700, metode: 'TUNAI', jenis: 'PENUH' }, 'staf-1')
+      service.bayar('tagihan-1', { jumlah: 700, metode: 'TUNAI', jenis: 'PELUNASAN' }, 'staf-1')
     );
     expect(err).toMatchObject({
       statusCode: 422,
@@ -124,7 +124,7 @@ describe('KeuanganService', () => {
 
     const hasil = await service.bayar(
       'tagihan-1',
-      { jumlah: 600, metode: 'TRANSFER', jenis: 'PENUH', penjamin_id: 'penjamin-1' },
+      { jumlah: 600, metode: 'TRANSFER', jenis: 'PELUNASAN', penjamin_id: 'penjamin-1' },
       'staf-kasir'
     );
 
@@ -134,23 +134,23 @@ describe('KeuanganService', () => {
       kasirStafId: 'staf-kasir',
       jumlah: 600,
       metode: 'TRANSFER',
-      jenis: 'PENUH'
+      jenis: 'PELUNASAN'
     });
     expect(repo.updatePembayaranTagihan).toHaveBeenCalledWith('tagihan-1', 1000, 'LUNAS');
     expect(hasil).toEqual({ tagihan_id: 'tagihan-1', status: 'LUNAS' });
   });
 
-  test('bayar sebagian memakai status BAYAR_SEBAGIAN dan penjamin Mandiri default', async () => {
+  test('bayar sebagian memakai status BELUM_LUNAS dan penjamin Mandiri default', async () => {
     repo.findTagihan.mockResolvedValue({ total_tagihan: 1000, total_dibayar: 0 });
     repo.findPenjaminMandiri.mockResolvedValue('penjamin-mandiri');
     repo.updatePembayaranTagihan.mockResolvedValue({ tagihan_id: 'tagihan-1' });
 
-    await service.bayar('tagihan-1', { jumlah: 250, metode: 'TUNAI', jenis: 'SEBAGIAN' }, 'staf-1');
+    await service.bayar('tagihan-1', { jumlah: 250, metode: 'TUNAI', jenis: 'CICILAN' }, 'staf-1');
 
     expect(repo.createPembayaran).toHaveBeenCalledWith(
       expect.objectContaining({ penjaminId: 'penjamin-mandiri', kasirStafId: 'staf-1' })
     );
-    expect(repo.updatePembayaranTagihan).toHaveBeenCalledWith('tagihan-1', 250, 'BAYAR_SEBAGIAN');
+    expect(repo.updatePembayaranTagihan).toHaveBeenCalledWith('tagihan-1', 250, 'BELUM_LUNAS');
   });
 
   test('list menolak periode terbalik dengan ERR-VAL-01', () => {

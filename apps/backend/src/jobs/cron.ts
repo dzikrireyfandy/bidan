@@ -87,7 +87,7 @@ export const runDailyReminders = async (): Promise<void> => {
   }
 };
 
-const flushQueue = async (): Promise<void> => {
+export const flushQueue = async (): Promise<void> => {
   if (!isMailerEnabled()) {
     return;
   }
@@ -121,7 +121,8 @@ const flushQueue = async (): Promise<void> => {
 };
 
 const sendWeeklyRecap = async (): Promise<void> => {
-  if (!isMailerEnabled() || !config.SMTP_USER) {
+  const tujuan = config.SENDER_EMAIL ?? config.SMTP_USER;
+  if (!isMailerEnabled() || !tujuan) {
     return;
   }
   try {
@@ -135,7 +136,7 @@ const sendWeeklyRecap = async (): Promise<void> => {
     );
     const row = rekap.recordset[0] ?? {};
     await sendMail(
-      config.SMTP_USER,
+      tujuan,
       'Rekap Mingguan',
       `Kunjungan 7 hari: ${String(row['kunjungan'] ?? 0)}\nPendapatan 7 hari: ${String(row['pendapatan'] ?? 0)}`
     );

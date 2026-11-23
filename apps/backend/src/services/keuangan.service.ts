@@ -70,7 +70,7 @@ export class KeuanganService {
     });
 
     const dibayarBaru = totalDibayar + body.jumlah;
-    const status = dibayarBaru >= totalTagihan ? 'LUNAS' : 'BAYAR_SEBAGIAN';
+    const status = dibayarBaru >= totalTagihan ? 'LUNAS' : 'BELUM_LUNAS';
     const row = await this.repository.updatePembayaranTagihan(id, dibayarBaru, status);
     if (!row) {
       throw ApiError.fromCode('ERR-FIN-02');

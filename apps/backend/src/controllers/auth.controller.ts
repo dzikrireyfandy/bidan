@@ -1,13 +1,18 @@
 import { asyncHandler } from '../middleware/asyncHandler';
 import respond from '../http/respond';
 import { AuthService } from '../services/auth.service';
-import type { EmailInput, LoginInput, ResetVerifyInput } from '../validation/auth';
+import type { EmailInput, LoginInput, RegisterPasienInput, ResetVerifyInput } from '../validation/auth';
 
 const service = new AuthService();
 
 export const login = asyncHandler(async (req, res) => {
   const body = req.validated?.body as LoginInput;
   return respond.ok(res, await service.login(body.username, body.password));
+});
+
+export const registerPasien = asyncHandler(async (req, res) => {
+  const body = req.validated?.body as RegisterPasienInput;
+  return respond.created(res, await service.registerPasien(body));
 });
 
 export const logout = asyncHandler(async (req, res) => {

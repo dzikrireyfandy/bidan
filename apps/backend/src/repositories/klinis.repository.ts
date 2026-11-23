@@ -323,6 +323,156 @@ export class KlinisRepository {
     );
     return result.recordset[0];
   }
+
+  async simpanRme(input: {
+    pasien_id: string;
+    kunjungan_id?: string;
+    staf_id?: string;
+    keluhan: string;
+    pemeriksaan_fisik?: string;
+    asesmen?: string;
+    rencana?: string;
+    catatan_bebas?: string;
+    sistolik?: number;
+    diastolik?: number;
+    nadi?: number;
+    suhu?: number;
+    berat_badan?: number;
+    tinggi_badan?: number;
+    djj?: number;
+    tinggi_fundus?: number;
+    usia_kehamilan?: string;
+    diagnosa?: string;
+    kode_icd10?: string;
+    tindakan_resep?: string;
+    catatan_edukasi?: string;
+    tgl_kontrol_ulang?: string;
+    stafId: string | null;
+  }): Promise<Record<string, unknown>> {
+    let kunjunganId = input.kunjungan_id;
+    if (!kunjunganId) {
+      const existingKunjungan = await db.query<{ kunjungan_id: string }>(
+        `SELECT TOP 1 kunjungan_id FROM [Kunjungan]
+          WHERE pasien_id = @pasien_id AND status != 'BATAL'
+          ORDER BY tgl_masuk DESC`,
+        { pasien_id: input.pasien_id }
+      );
+      if (existingKunjungan.recordset[0]?.kunjungan_id) {
+        kunjunganId = existingKunjungan.recordset[0].kunjungan_id;
+      } else {
+        const uidRow = await db.query<{ unit_id: string }>(`SELECT TOP 1 unit_id FROM [Unit_Pelayanan] WHERE aktif = 1`);
+        const sidRow = await db.query<{ staf_id: string }>(`SELECT TOP 1 staf_id FROM [Staf] WHERE aktif = 1`);
+        const penRow = await db.query<{ penjamin_id: string }>(`SELECT TOP 1 penjamin_id FROM [Penjamin] WHERE aktif = 1`);
+        const createdK = await db.query<{ kunjungan_id: string }>(
+          `INSERT INTO [Kunjungan] (kunjungan_id, pasien_id, unit_id, dpjp_staf_id, penjamin_id, jenis_kunjungan, tgl_masuk, status)
+           OUTPUT INSERTED.kunjungan_id
+           VALUES (NEWID(), @pid, @uid, @sid, @penid, 'RAWAT_JALAN', CAST(SYSDATETIME() AS DATE), 'SELESAI')`,
+          {
+            pid: input.pasien_id,
+            uid: uidRow.recordset[0]?.unit_id,
+            sid: input.stafId ?? sidRow.recordset[0]?.staf_id,
+            penid: penRow.recordset[0]?.penjamin_id
+          }
+        );
+        kunjunganId = createdK.recordset[0]?.kunjungan_id;
+      }
+    }
+
+    const sidDefault = (await db.query<{ staf_id: string }>(`SELECT TOP 1 staf_id FROM [Staf] WHERE aktif = 1`)).recordset[0]?.staf_id;
+    const effectiveStafId = input.stafId ?? sidDefault;
+
+    const pemRes = await db.query<{ pemeriksaan_id: string }>(
+      `INSERT INTO [Pemeriksaan] (pemeriksaan_id, kunjungan_id, staf_id, keluhan, pemeriksaan_fisik, asesmen, rencana, catatan_bebas, waktu)
+       OUTPUT INSERTED.pemeriksaan_id
+       VALUES (NEWID(), @kid, @sid, @keluhan, @fisik, @asesmen, @rencana, @catatan, SYSDATETIME())`,
+      {
+        kid: kunjunganId,
+        sid: effectiveStafId,
+        keluhan: input.keluhan,
+        fisik: input.pemeriksaan_fisik || 'Dalam batas normal',
+        asesmen: input.asesmen || input.diagnosa || 'Pemeriksaan Klinis Kebidanan',
+        rencana: input.rencana || input.tindakan_resep || 'Konseling Asuhan Kebidanan',
+        catatan: input.catatan_edukasi || input.catatan_bebas || ''
+      }
+    );
+    const pemeriksaanId = pemRes.recordset[0]?.pemeriksaan_id;
+
+    if (pemeriksaanId) {
+      await db.query(
+        `INSERT INTO [Tanda_Vital] (vital_id, pemeriksaan_id, sistolik, diastolik, nadi, suhu, frekuensi_napas, spo2, berat_badan, tinggi_badan, waktu)
+         VALUES (NEWID(), @pemId, @sis, @dia, @nadi, @suhu, 20, 98, @bb, @tb, SYSDATETIME())`,
+        {
+          pemId: pemeriksaanId,
+          sis: input.sistolik ?? 120,
+          dia: input.diastolik ?? 80,
+          nadi: input.nadi ?? 80,
+          suhu: input.suhu ?? 36.5,
+          bb: input.berat_badan ?? 55,
+          tb: input.tinggi_badan ?? 155
+        }
+      );
+    }
+
+    const noDok = 'RME-' + Date.now().toString().slice(-6);
+    const isiDoc = JSON.stringify({
+      keluhan: input.keluhan,
+      pemeriksaan_fisik: input.pemeriksaan_fisik,
+      diagnosa: input.diagnosa || input.asesmen,
+      kode_icd10: input.kode_icd10,
+      tindakan: input.tindakan_resep || input.rencana,
+      sistolik: input.sistolik,
+      diastolik: input.diastolik,
+      djj: input.djj,
+      tinggi_fundus: input.tinggi_fundus,
+      catatan_edukasi: input.catatan_edukasi,
+      tgl_kontrol_ulang: input.tgl_kontrol_ulang
+    });
+
+    await db.query(
+      `INSERT INTO [Dokumen_Medis] (dokumen_id, kunjungan_id, staf_id, jenis, no_dokumen, isi, tgl_terbit)
+       VALUES (NEWID(), @kid, @sid, 'RME', @noDok, @isi, CAST(SYSDATETIME() AS DATE))`,
+      {
+        kid: kunjunganId,
+        sid: effectiveStafId,
+        noDok,
+        isi: isiDoc
+      }
+    );
+
+    return {
+      pemeriksaan_id: pemeriksaanId,
+      kunjungan_id: kunjunganId,
+      no_dokumen: noDok,
+      waktu: new Date().toISOString()
+    };
+  }
+
+  async listRme(limit: number, pasienId?: string): Promise<Record<string, unknown>[]> {
+    const result = await db.query<Record<string, unknown>>(
+      `SELECT TOP (@limit)
+              pem.pemeriksaan_id AS id,
+              CONVERT(VARCHAR(16), pem.waktu, 120) AS waktu,
+              p.nama AS pasien_nama,
+              p.nik,
+              p.no_rm,
+              pem.asesmen AS diagnosa,
+              pem.rencana AS tindakan,
+              CONCAT(tv.sistolik, '/', tv.diastolik, ' mmHg') AS tekanan_darah,
+              pem.keluhan,
+              pem.pemeriksaan_fisik,
+              COALESCE(dm.no_dokumen, 'RME-' + RIGHT(CAST(pem.pemeriksaan_id AS VARCHAR(36)), 6)) AS no_dokumen,
+              dm.isi AS isi_dokumen
+         FROM [Pemeriksaan] pem
+         JOIN [Kunjungan] k ON k.kunjungan_id = pem.kunjungan_id
+         JOIN [Pasien] p ON p.pasien_id = k.pasien_id
+         LEFT JOIN [Tanda_Vital] tv ON tv.pemeriksaan_id = pem.pemeriksaan_id
+         LEFT JOIN [Dokumen_Medis] dm ON dm.kunjungan_id = k.kunjungan_id AND dm.jenis = 'RME'
+        WHERE (@pasien_id IS NULL OR p.pasien_id = @pasien_id)
+        ORDER BY pem.waktu DESC`,
+      { limit, pasien_id: pasienId ?? null }
+    );
+    return result.recordset;
+  }
 }
 
 export default KlinisRepository;

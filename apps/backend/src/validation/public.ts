@@ -32,7 +32,9 @@ export const reservasiSchema = z.object({
   no_hp: z.string().optional(),
   email: z.string().optional(),
   jenis_kelamin: z.enum(['P', 'L']).optional(),
-  keluhan: z.string().optional()
+  keluhan: z.string().optional(),
+  username: z.string().optional(),
+  password: z.string().optional()
 });
 
 export type KontenListInput = z.infer<typeof kontenListSchema>;

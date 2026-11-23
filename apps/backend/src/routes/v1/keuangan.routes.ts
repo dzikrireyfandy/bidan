@@ -71,11 +71,11 @@ defineRoute(
     method: 'post',
     path: '/keuangan/rekap/list',
     auth: true,
-    profiles: KASIR,
+    profiles: HARGA_BACA,
     schemas: { body: tagihanListSchema }
   },
   authenticate,
-  requireProfiles(...KASIR),
+  requireProfiles(...HARGA_BACA),
   validate({ body: tagihanListSchema }),
   rekap
 );

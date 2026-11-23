@@ -6,7 +6,8 @@ export class ReservasiRepository {
   async list(limit: number, tanggal: string | null): Promise<Record<string, unknown>[]> {
     const result = await db.query<Record<string, unknown>>(
       `SELECT TOP (@limit) r.reservasi_id, r.pasien_id, p.nama AS nama_pasien, r.jadwal_id,
-              r.nomor_antrean, r.estimasi_jam, r.status, r.metode_daftar, j.tanggal
+              r.nomor_antrean, CONVERT(VARCHAR(5), r.estimasi_jam, 108) AS estimasi_jam,
+              r.status, r.metode_daftar, j.tanggal
          FROM [Reservasi] r
          JOIN [Pasien] p ON p.pasien_id = r.pasien_id
          JOIN [Jadwal_Praktik] j ON j.jadwal_id = r.jadwal_id
@@ -65,7 +66,11 @@ export class ReservasiRepository {
 
   async listJadwal(limit: number, tanggal: string | null): Promise<Record<string, unknown>[]> {
     const result = await db.query<Record<string, unknown>>(
-      `SELECT TOP (@limit) j.* FROM [Jadwal_Praktik] j
+      `SELECT TOP (@limit) j.jadwal_id, j.staf_id, j.unit_id, j.ruangan_id, j.tanggal,
+              CONVERT(VARCHAR(5), j.jam_mulai, 108) AS jam_mulai,
+              CONVERT(VARCHAR(5), j.jam_selesai, 108) AS jam_selesai,
+              j.kuota_maks, j.durasi_per_pasien, j.aktif
+         FROM [Jadwal_Praktik] j
         WHERE j.aktif = 1 AND (@tanggal IS NULL OR CAST(j.tanggal AS VARCHAR(10)) = @tanggal)
         ORDER BY j.tanggal ASC, j.jam_mulai ASC`,
       { limit, tanggal }

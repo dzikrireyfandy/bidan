@@ -150,11 +150,26 @@ export class KeuanganRepository {
       `SELECT CAST(pb.waktu_bayar AS DATE) AS tanggal, pb.metode,
               COUNT(*) AS jumlah_transaksi, SUM(pb.jumlah) AS total
          FROM [Pembayaran] pb
-        WHERE (@dari IS NULL OR pb.waktu_bayar >= CAST(@dari AS DATE))
-          AND (@sampai IS NULL OR pb.waktu_bayar < DATEADD(DAY, 1, CAST(@sampai AS DATE)))
+        WHERE (@dari IS NULL OR @dari = '' OR pb.waktu_bayar >= CAST(@dari AS DATE))
+          AND (@sampai IS NULL OR @sampai = '' OR pb.waktu_bayar < DATEADD(DAY, 1, CAST(@sampai AS DATE)))
         GROUP BY CAST(pb.waktu_bayar AS DATE), pb.metode
         ORDER BY tanggal DESC, pb.metode ASC`,
-      { dari, sampai }
+      { dari: dari || null, sampai: sampai || null }
+    );
+    return result.recordset;
+  }
+
+  async rincianPendapatanLayanan(): Promise<Record<string, unknown>[]> {
+    const result = await db.query<Record<string, unknown>>(
+      `SELECT l.layanan_id, l.nama AS pos_layanan,
+              COUNT(DISTINCT tr.tagihan_id) AS volume_pasien,
+              COALESCE(SUM(tr.subtotal), 0) AS pendapatan_bruto,
+              COALESCE(SUM(tr.subtotal * 0.35), 0) AS hpp_medis,
+              COALESCE(SUM(tr.subtotal * 0.65), 0) AS margin_kontribusi
+         FROM [Layanan_Medis] l
+         LEFT JOIN [Tagihan_Rincian] tr ON tr.layanan_id = l.layanan_id
+        GROUP BY l.layanan_id, l.nama
+        ORDER BY pendapatan_bruto DESC`
     );
     return result.recordset;
   }

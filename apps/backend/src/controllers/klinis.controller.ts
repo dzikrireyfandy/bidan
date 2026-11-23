@@ -10,7 +10,9 @@ import type {
   KlinisBayiBody,
   KunjunganBody,
   LimitInput,
-  PersalinanBody
+  PersalinanBody,
+  RmeListInput,
+  RmeSimpanInput
 } from '../validation/klinis';
 
 const service = new KlinisService();
@@ -85,6 +87,16 @@ export const createKb = asyncHandler(async (req, res) => {
   const { id } = req.validated?.params as { id: string };
   const body = req.validated?.body as KbBody;
   return respond.created(res, await service.createKb(id, body));
+});
+
+export const simpanRme = asyncHandler(async (req, res) => {
+  const body = req.validated?.body as RmeSimpanInput;
+  return respond.created(res, await service.simpanRme(body, req.auth?.stafId ?? null));
+});
+
+export const listRme = asyncHandler(async (req, res) => {
+  const body = req.validated?.body as RmeListInput;
+  return respond.ok(res, await service.listRme(body));
 });
 
 export default {

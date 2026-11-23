@@ -18,7 +18,16 @@ export class AuthService {
   async login(username: string, password: string): Promise<LoginResult> {
     const cleanUsername = username.trim();
     const akun = await this.repository.findAkunByUsername(cleanUsername);
-    if (!akun || !akun.aktif || (akun.username !== undefined && akun.username !== cleanUsername)) {
+    if (!akun || !akun.aktif) {
+      throw ApiError.fromCode('ERR-AUTH-02');
+    }
+
+    const cocokIdentitas =
+      (akun.username !== undefined && akun.username === cleanUsername) ||
+      (akun.nik !== undefined && akun.nik !== null && akun.nik === cleanUsername) ||
+      (akun.email !== undefined && akun.email !== null && akun.email.toLowerCase() === cleanUsername.toLowerCase());
+
+    if (!cocokIdentitas) {
       throw ApiError.fromCode('ERR-AUTH-02');
     }
     if (akun.terkunci_sampai && akun.terkunci_sampai > new Date()) {
@@ -98,6 +107,47 @@ export class AuthService {
     await this.repository.markOtpUsed(akunId);
 
     return { message: 'Kata sandi berhasil diperbarui' };
+  }
+
+  async registerPasien(input: {
+    username: string;
+    password: string;
+    nik: string;
+    nama: string;
+    email: string;
+    no_hp?: string;
+    jenis_kelamin?: string;
+  }): Promise<LoginResult & { pasienId: string; nama: string }> {
+    const cleanUsername = input.username.trim();
+    const existing = await this.repository.findAkunByUsername(cleanUsername);
+    if (existing) {
+      throw ApiError.badRequest('Username atau NIK sudah terdaftar');
+    }
+    const hash = await bcrypt.hash(input.password, 10);
+    const created = await this.repository.registerPasienAkun({
+      username: cleanUsername,
+      passwordHash: hash,
+      nik: input.nik.trim(),
+      nama: input.nama.trim(),
+      email: input.email.trim(),
+      noHp: input.no_hp?.trim(),
+      jenisKelamin: input.jenis_kelamin
+    });
+
+    return {
+      token: signToken({
+        akunId: created.akun_id,
+        peran: 'PASIEN',
+        subPeran: null,
+        stafId: null,
+        pasienId: created.pasien_id,
+        unitId: null
+      }),
+      peran: 'PASIEN',
+      subPeran: null,
+      pasienId: created.pasien_id,
+      nama: input.nama
+    };
   }
 }
 

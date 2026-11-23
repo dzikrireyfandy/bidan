@@ -81,6 +81,37 @@ export const kbSchema = z.object({
   efek_samping: z.string().max(255).optional()
 });
 
+export const rmeSimpanSchema = z.object({
+  pasien_id: z.string().uuid(),
+  kunjungan_id: z.string().uuid().optional(),
+  staf_id: z.string().uuid().optional(),
+  keluhan: z.string().min(1, 'Keluhan wajib diisi'),
+  pemeriksaan_fisik: z.string().optional().default(''),
+  asesmen: z.string().optional().default(''),
+  rencana: z.string().optional().default(''),
+  catatan_bebas: z.string().optional().default(''),
+  sistolik: z.coerce.number().optional().default(120),
+  diastolik: z.coerce.number().optional().default(80),
+  nadi: z.coerce.number().optional().default(80),
+  suhu: z.coerce.number().optional().default(36.5),
+  berat_badan: z.coerce.number().optional().default(55),
+  tinggi_badan: z.coerce.number().optional().default(155),
+  djj: z.coerce.number().optional(),
+  tinggi_fundus: z.coerce.number().optional(),
+  usia_kehamilan: z.string().optional(),
+  diagnosa: z.string().optional(),
+  kode_icd10: z.string().optional(),
+  tindakan_resep: z.string().optional(),
+  catatan_edukasi: z.string().optional(),
+  tgl_kontrol_ulang: z.string().optional()
+});
+
+export const rmeListSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  pasien_id: z.string().uuid().optional(),
+  nik: z.string().optional()
+});
+
 export type LimitInput = z.infer<typeof klinisLimitSchema>;
 export type KunjunganBody = z.infer<typeof kunjunganSchema>;
 export type CatatanBody = z.infer<typeof catatanSchema>;
@@ -90,3 +121,5 @@ export type PersalinanBody = z.infer<typeof persalinanSchema>;
 export type KlinisBayiBody = z.infer<typeof klinisBayiSchema>;
 export type ImunisasiBody = z.infer<typeof imunisasiSchema>;
 export type KbBody = z.infer<typeof kbSchema>;
+export type RmeSimpanInput = z.infer<typeof rmeSimpanSchema>;
+export type RmeListInput = z.infer<typeof rmeListSchema>;

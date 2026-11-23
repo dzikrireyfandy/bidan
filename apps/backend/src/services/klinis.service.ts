@@ -10,7 +10,9 @@ import type {
   KlinisBayiBody,
   KunjunganBody,
   LimitInput,
-  PersalinanBody
+  PersalinanBody,
+  RmeListInput,
+  RmeSimpanInput
 } from '../validation/klinis';
 
 export class KlinisService {
@@ -238,6 +240,17 @@ export class KlinisService {
       throw ApiError.internal('Gagal menyimpan pelayanan KB');
     }
     return row;
+  }
+
+  async simpanRme(body: RmeSimpanInput, stafId: string | null): Promise<Record<string, unknown>> {
+    return this.repository.simpanRme({
+      ...body,
+      stafId
+    });
+  }
+
+  async listRme(body: RmeListInput): Promise<Record<string, unknown>[]> {
+    return this.repository.listRme(paginate(body.limit, 50, 200), body.pasien_id);
   }
 }
 

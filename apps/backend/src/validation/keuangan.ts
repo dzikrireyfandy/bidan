@@ -3,8 +3,8 @@ import { dateSchema } from './common';
 
 export const tagihanListSchema = z.object({
   status: z.string().max(20).optional(),
-  dari: dateSchema.optional(),
-  sampai: dateSchema.optional(),
+  dari: dateSchema.nullable().optional(),
+  sampai: dateSchema.nullable().optional(),
   limit: z.coerce.number().int().min(1).max(500).optional()
 });
 

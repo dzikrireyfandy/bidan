@@ -56,10 +56,10 @@ const berlabel = (r: { method: string; path: string }): string => `${r.method} $
 describe('Inventaris endpoint /api/v1', () => {
   const registry = getRouteRegistry();
 
-  test('tepat 126 endpoint bisnis terdaftar', () => {
+  test('tepat 129 endpoint bisnis terdaftar', () => {
     const bisnis = routes.filter((rute) => rute.path !== '/');
-    expect(bisnis.length).toBe(126);
-    expect(registry.length).toBe(126);
+    expect(bisnis.length).toBe(129);
+    expect(registry.length).toBe(129);
   });
 
   test('tidak ada duplikat method+path', () => {
@@ -108,6 +108,7 @@ describe('Inventaris endpoint /api/v1', () => {
     expect(publik.sort()).toEqual(
       [
         'POST /auth/login',
+        'POST /auth/register-pasien',
         'POST /auth/reset/request',
         'POST /auth/reset/verify',
         'POST /public/konten/list',

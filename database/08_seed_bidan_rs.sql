@@ -155,7 +155,7 @@ INSERT INTO dbo.Layanan_Medis (layanan_id, unit_id, kode, nama, kategori, satuan
  (NEWID(), @unit_bidan, 'KIA-KBP',   'Pelayanan KB Pil',                 'KEBIDANAN', 'kali', '99.99', 1),
  (NEWID(), @unit_bidan, 'KIA-KBI',   'Pelayanan KB IUD',                 'KEBIDANAN', 'kali', '99.99', 1),
  (NEWID(), @unit_bidan, 'KIA-KBM',   'Pelayanan KB Implan',              'KEBIDANAN', 'kali', '99.99', 1),
- (NEWID(), @unit_umum,  'UMU-KONS',  'Konsultasi Dokter Umum',           'UMUM',      'kali', '99.01', 1),
+ (NEWID(), @unit_umum,  'UMU-KONS',  'Konsultasi Penyakit Umum',         'UMUM',      'kali', '99.01', 1),
  (NEWID(), @unit_lab,   'LAB-DARAH', 'Pemeriksaan Darah Lengkap',        'PENUNJANG', 'kali', '90.09', 1);
 
 INSERT INTO dbo.Harga_Layanan (harga_layanan_id, layanan_id, penjamin_id, diubah_oleh, harga, berlaku_dari, alasan)

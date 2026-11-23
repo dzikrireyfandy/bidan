@@ -3,10 +3,16 @@ import { paginate } from '../validation/common';
 import PublicRepository from '../repositories/public.repository';
 
 export interface ReservasiInput {
-  pasien_id: string;
-  jadwal_id: string;
+  pasien_id?: string;
+  jadwal_id?: string;
+  sesi_id?: string;
   layanan_id: string;
-  metode_daftar: 'ONLINE' | 'WALK_IN' | 'TELEPON';
+  metode_daftar?: 'ONLINE' | 'WALK_IN' | 'TELEPON';
+  nik?: string;
+  nama?: string;
+  no_hp?: string;
+  email?: string;
+  keluhan?: string;
 }
 
 export class PublicService {
@@ -30,25 +36,49 @@ export class PublicService {
   }
 
   async createReservasi(body: ReservasiInput): Promise<Record<string, unknown>> {
-    const slot = await this.repository.findJadwalSlot(body.jadwal_id);
+    const jadwalId = body.jadwal_id ?? body.sesi_id;
+    if (!jadwalId) {
+      throw ApiError.badRequest('jadwal_id atau sesi_id wajib diisi');
+    }
+
+    let pasienId = body.pasien_id;
+    if (!pasienId && body.nik) {
+      const existing = await this.repository.findPasien(body.nik, null);
+      if (existing) {
+        pasienId = existing.pasien_id;
+      } else {
+        pasienId = await this.repository.createPasienRingkas({
+          nik: body.nik,
+          nama: body.nama,
+          noHp: body.no_hp,
+          email: body.email
+        });
+      }
+    }
+
+    if (!pasienId) {
+      throw ApiError.badRequest('pasien_id atau NIK pasien wajib diisi');
+    }
+
+    const slot = await this.repository.findJadwalSlot(jadwalId);
     if (!slot) {
       throw ApiError.notFound('Jadwal tidak tersedia');
     }
 
-    const terpakai = await this.repository.countReservasi(body.jadwal_id);
+    const terpakai = await this.repository.countReservasi(jadwalId);
     const urutan = terpakai + 1;
     if (urutan > slot.kuota_maks) {
       throw ApiError.fromCode('ERR-RSV-01');
     }
 
     const inserted = await this.repository.createReservasi({
-      pasienId: body.pasien_id,
-      jadwalId: body.jadwal_id,
+      pasienId,
+      jadwalId,
       layananId: body.layanan_id,
       nomor: urutan,
       offset: (urutan - 1) * slot.durasi_per_pasien,
       jam: slot.jam_mulai,
-      metode: body.metode_daftar
+      metode: body.metode_daftar ?? 'ONLINE'
     });
     if (!inserted) {
       throw ApiError.internal('Gagal membuat reservasi');

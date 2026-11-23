@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { KLINIK_INFO } from '../constants/klinik';
 
 interface HeaderProps {
-  onOpenBooking: () => void;
+  onOpenBooking?: () => void;
   onOpenLogin: (defaultRole?: 'admin' | 'bidan' | 'pasien') => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenBooking, onOpenLogin }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenBooking: _onOpenBooking, onOpenLogin }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const toggleMobileMenu = () => {
@@ -87,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenBooking, onOpenLogin }) =>
             <button
               type="button"
               onClick={() => onOpenLogin('pasien')}
-              className="btn btn-secondary nav-portal-btn"
+              className="btn btn-primary nav-portal-btn"
               title="Akses Portal Pasien, Bidan RME, atau Admin Klinik"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -95,20 +95,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenBooking, onOpenLogin }) =>
                 <path d="M20 21a8 8 0 1 0-16 0"/>
               </svg>
               <span>Masuk Portal</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onOpenBooking}
-              className="btn btn-primary btn-shimmer nav-booking-btn"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-              <span>Reservasi Sesi</span>
             </button>
 
             {/* Mobile Hamburger Toggle Button */}
@@ -195,16 +181,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenBooking, onOpenLogin }) =>
                     <span>Bidan / Admin</span>
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => { closeMobileMenu(); onOpenBooking(); }}
-                  className="btn btn-primary btn-shimmer"
-                  style={{ width: '100%', padding: '0.85rem', fontSize: '0.9375rem', fontWeight: 700 }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  <span>Reservasi Sesi Online</span>
-                </button>
 
                 <a
                   href={`tel:${KLINIK_INFO.telepon}`}

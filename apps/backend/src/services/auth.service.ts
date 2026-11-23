@@ -16,8 +16,9 @@ export class AuthService {
   constructor(private readonly repository: AuthRepository = new AuthRepository()) {}
 
   async login(username: string, password: string): Promise<LoginResult> {
-    const akun = await this.repository.findAkunByUsername(username);
-    if (!akun || !akun.aktif) {
+    const cleanUsername = username.trim();
+    const akun = await this.repository.findAkunByUsername(cleanUsername);
+    if (!akun || !akun.aktif || (akun.username !== undefined && akun.username !== cleanUsername)) {
       throw ApiError.fromCode('ERR-AUTH-02');
     }
     if (akun.terkunci_sampai && akun.terkunci_sampai > new Date()) {

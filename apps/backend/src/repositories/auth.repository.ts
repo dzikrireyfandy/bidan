@@ -3,6 +3,7 @@ import type { Peran, SubPeran } from '../types';
 
 export interface AkunRow {
   akun_id: string;
+  username?: string;
   password_hash: string;
   aktif: boolean;
   pasien_id: string | null;
@@ -21,12 +22,12 @@ export interface OtpRow {
 export class AuthRepository {
   async findAkunByUsername(username: string): Promise<AkunRow | undefined> {
     const result = await db.query<AkunRow>(
-      `SELECT a.akun_id, a.password_hash, a.aktif, a.pasien_id, a.staf_id, a.sub_peran,
+      `SELECT a.akun_id, a.username, a.password_hash, a.aktif, a.pasien_id, a.staf_id, a.sub_peran,
               a.terkunci_sampai, p.kode AS peran, s.unit_id
          FROM [Akun_Pengguna] a
          JOIN [Peran] p ON p.peran_id = a.peran_id
          LEFT JOIN [Staf] s ON s.staf_id = a.staf_id
-        WHERE a.username = @username`,
+        WHERE a.username = @username COLLATE Latin1_General_CS_AS`,
       { username }
     );
     return result.recordset[0];

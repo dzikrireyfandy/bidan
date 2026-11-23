@@ -50,16 +50,20 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     apiClient.post<{ success: boolean; data: any[] }>('/public/layanan/list', {})
       .then((res) => {
         if (res.data?.success && Array.isArray(res.data.data)) {
-          const list: LayananItem[] = res.data.data.map((l: any) => ({
-            layanan_id: l.layanan_id || l.kode || 'LAY-0',
-            nama: l.nama || 'Layanan Medis',
-            kategori: l.kategori || 'Kebidanan',
-            deskripsi: l.deskripsi || '',
-            durasi_menit: l.durasi_menit || 30,
-            highlight: l.highlight || 'Pelayanan Standar Medis',
-            icon: 'anc',
-            cakupan: []
-          }));
+          const list: LayananItem[] = res.data.data.map((l: any) => {
+            const rawNama = l.nama || 'Layanan Medis';
+            const cleanNama = rawNama.replace(/dokter umum/gi, 'Pemeriksaan Umum');
+            return {
+              layanan_id: l.layanan_id || l.kode || 'LAY-0',
+              nama: cleanNama,
+              kategori: l.kategori || 'Kebidanan',
+              deskripsi: l.deskripsi || '',
+              durasi_menit: l.durasi_menit || 30,
+              highlight: l.highlight || 'Pelayanan Standar Medis',
+              icon: 'anc',
+              cakupan: []
+            };
+          });
           setLayananList(list);
           if (!formData.layanan_id && list.length > 0) {
             setFormData(prev => ({ ...prev, layanan_id: list[0]?.layanan_id || '' }));
@@ -234,33 +238,14 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.5rem' }}>
-                  Pilih Layanan Asuhan Klinis &amp; Konsultasi (Pencarian Rekomendasi)
+                  Pilih Layanan Asuhan Klinis &amp; Pemeriksaan *
                 </label>
-                <input
-                  type="text"
-                  list="layanan-rekomendasi-datalist"
-                  placeholder="Ketik untuk mencari rekomendasi layanan..."
-                  value={layananList.find(l => l.layanan_id === formData.layanan_id)?.nama || ''}
-                  onChange={(e) => {
-                    const text = e.target.value;
-                    const found = layananList.find(l => l.nama.toLowerCase().includes(text.toLowerCase()));
-                    if (found) {
-                      setFormData(prev => ({ ...prev, layanan_id: found.layanan_id }));
-                    }
-                  }}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none', marginBottom: '0.5rem' }}
-                />
-                <datalist id="layanan-rekomendasi-datalist">
-                  {layananList.map((l) => (
-                    <option key={l.layanan_id} value={l.nama} />
-                  ))}
-                </datalist>
                 <select
                   value={formData.layanan_id}
                   onChange={(e) => setFormData({ ...formData, layanan_id: e.target.value })}
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
                 >
-                  <option value="">-- Pilih Layanan Kebidanan &amp; Umum --</option>
+                  <option value="">-- Pilih Layanan Kebidanan &amp; Pemeriksaan Umum --</option>
                   {layananList.map((l) => (
                     <option key={l.layanan_id} value={l.layanan_id}>
                       {l.nama} ({l.kategori})
@@ -302,9 +287,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                 </div>
               </div>
 
-              <div style={{ background: '#faf5fe', padding: '1rem', borderRadius: '12px', border: '1px solid #efe8f6', marginBottom: '1.5rem', fontSize: '0.8125rem', color: 'var(--color-slate-600)' }}>
-                <strong>Catatan Alur:</strong> Setiap nomor antrean memiliki estimasi durasi pemeriksaan. Anda akan mendapatkan estimasi jam kedatangan otomatis agar terhindar dari antrean panjang.
-              </div>
+
 
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button
@@ -489,10 +472,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                   {successTicket.sesiNama} | Tanggal: {successTicket.tanggal}
                 </div>
 
-                <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #efe8f6', display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
-                  <span style={{ color: 'var(--color-slate-500)' }}>Estimasi Dipanggil:</span>
-                  <strong style={{ color: '#16a34a', fontSize: '0.9375rem' }}>{successTicket.estimasiJam}</strong>
-                </div>
+
               </div>
 
               <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)', marginBottom: '1.5rem' }}>

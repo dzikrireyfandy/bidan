@@ -119,14 +119,27 @@ export class KeuanganRepository {
     sampai: string | null
   ): Promise<Record<string, unknown>[]> {
     const result = await db.query<Record<string, unknown>>(
-      `SELECT TOP (@limit) t.*, p.nama AS nama_pasien
+      `SELECT TOP (@limit)
+              t.tagihan_id,
+              t.kunjungan_id,
+              t.total_tagihan,
+              t.total_dibayar,
+              t.total_tagihan AS total,
+              t.total_dibayar AS terbayar,
+              (t.total_tagihan - t.total_dibayar) AS sisa,
+              t.status,
+              t.tgl_terbit,
+              CONCAT('INV-', REPLACE(CONVERT(VARCHAR(10), t.tgl_terbit, 120), '-', ''), '-', UPPER(SUBSTRING(CAST(t.tagihan_id AS VARCHAR(36)), 1, 6))) AS no_tagihan,
+              p.nama AS nama_pasien,
+              p.no_rm,
+              p.nik
          FROM [Tagihan] t
-         JOIN [Kunjungan] k ON k.kunjungan_id = t.kunjungan_id
-         JOIN [Pasien] p ON p.pasien_id = k.pasien_id
+         LEFT JOIN [Kunjungan] k ON k.kunjungan_id = t.kunjungan_id
+         LEFT JOIN [Pasien] p ON p.pasien_id = k.pasien_id
         WHERE (@status IS NULL OR t.status = @status)
           AND (@dari IS NULL OR t.tgl_terbit >= CAST(@dari AS DATE))
           AND (@sampai IS NULL OR t.tgl_terbit < DATEADD(DAY, 1, CAST(@sampai AS DATE)))
-        ORDER BY t.tgl_terbit DESC`,
+        ORDER BY t.tgl_terbit DESC, t.tagihan_id DESC`,
       { limit, status, dari, sampai }
     );
     return result.recordset;

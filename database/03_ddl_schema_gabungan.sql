@@ -1321,7 +1321,7 @@ ALTER TABLE dbo.[Tagihan] ADD CONSTRAINT [CK_Tagihan_status] CHECK (status IN ('
 ALTER TABLE dbo.[Tagihan_Rincian] ADD CONSTRAINT [CK_Tagihan_Rincian_1] CHECK (qty > 0);
 ALTER TABLE dbo.[Tagihan_Rincian] ADD CONSTRAINT [CK_Tagihan_Rincian_2] CHECK ((CASE WHEN obat_id IS NULL THEN 0 ELSE 1 END + CASE WHEN layanan_id IS NULL THEN 0 ELSE 1 END + CASE WHEN paket_id IS NULL THEN 0 ELSE 1 END) = 1);
 ALTER TABLE dbo.[Pembayaran] ADD CONSTRAINT [CK_Pembayaran_1] CHECK (jumlah > 0);
-ALTER TABLE dbo.[Pembayaran] ADD CONSTRAINT [CK_Pembayaran_metode] CHECK (metode IN ('TUNAI','TRANSFER','QRIS','KARTU'));
+ALTER TABLE dbo.[Pembayaran] ADD CONSTRAINT [CK_Pembayaran_metode] CHECK (metode IN ('TUNAI','TRANSFER','QRIS','KARTU','BPJS'));
 ALTER TABLE dbo.[Pembayaran] ADD CONSTRAINT [CK_Pembayaran_jenis] CHECK (jenis IN ('PELUNASAN','UANG_MUKA','CICILAN'));
 ALTER TABLE dbo.[Notifikasi_Log] ADD CONSTRAINT [CK_Notifikasi_status] CHECK (status IN ('ANTRE','TERKIRIM','GAGAL'));
 ALTER TABLE dbo.[Konten_Publik] ADD CONSTRAINT [CK_Konten_tipe] CHECK (tipe IN ('PROFIL','LAYANAN','KONTAK','GALERI','TESTIMONI'));

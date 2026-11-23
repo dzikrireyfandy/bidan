@@ -76,6 +76,7 @@ export interface ReservasiData {
   nik: string;
   no_hp: string;
   email: string;
+  jenis_kelamin?: 'P' | 'L';
   tanggal: string;
   sesi_id: string;
   layanan_id: string;

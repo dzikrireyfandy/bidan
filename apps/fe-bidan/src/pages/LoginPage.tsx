@@ -181,7 +181,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
               gap: '0.15rem'
             }}
           >
-            <span>Bidan Ria</span>
+            <span>Bidan</span>
             <span style={{ fontSize: '0.625rem', fontWeight: 500, color: selectedRole === 'bidan' ? 'var(--color-primary)' : 'var(--color-slate-400)' }}>RME</span>
           </button>
 

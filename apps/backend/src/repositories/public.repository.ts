@@ -36,8 +36,7 @@ export class PublicRepository {
   }
 
   async listJadwal(limit: number, unitId: string | null): Promise<Record<string, unknown>[]> {
-    const result = await db.query<Record<string, unknown>>(
-      `SELECT TOP (@limit) j.jadwal_id, j.staf_id, j.unit_id, j.ruangan_id, j.tanggal,
+    const queryStr = `SELECT TOP (@limit) j.jadwal_id, j.staf_id, j.unit_id, j.ruangan_id, j.tanggal,
               j.jam_mulai, j.jam_selesai, j.kuota_maks, j.durasi_per_pasien,
               CASE WHEN j.kuota_maks - ISNULL((
                      SELECT COUNT(*) FROM [Reservasi] r
@@ -53,9 +52,30 @@ export class PublicRepository {
          FROM [Jadwal_Praktik] j
         WHERE j.aktif = 1 AND j.tanggal >= CAST(SYSDATETIME() AS DATE)
           AND (@unit_id IS NULL OR j.unit_id = @unit_id)
-        ORDER BY j.tanggal ASC, j.jam_mulai ASC`,
-      { limit, unit_id: unitId }
-    );
+        ORDER BY j.tanggal ASC, j.jam_mulai ASC`;
+
+    let result = await db.query<Record<string, unknown>>(queryStr, { limit, unit_id: unitId });
+    if (result.recordset.length === 0) {
+      // Auto-injeksi jadwal praktik default (Sesi Pagi & Sore) jika database belum memiliki jadwal aktif
+      await db.query(`
+        IF NOT EXISTS (SELECT 1 FROM [Jadwal_Praktik] WHERE aktif = 1 AND tanggal >= CAST(SYSDATETIME() AS DATE))
+        BEGIN
+          DECLARE @sid UNIQUEIDENTIFIER = (SELECT TOP 1 staf_id FROM [Staf] WHERE aktif = 1);
+          DECLARE @uid UNIQUEIDENTIFIER = (SELECT TOP 1 unit_id FROM [Unit_Pelayanan] WHERE aktif = 1);
+          DECLARE @rid UNIQUEIDENTIFIER = (SELECT TOP 1 ruangan_id FROM [Ruangan] WHERE aktif = 1);
+          IF @sid IS NOT NULL AND @uid IS NOT NULL AND @rid IS NOT NULL
+          BEGIN
+            INSERT INTO [Jadwal_Praktik] (jadwal_id, staf_id, unit_id, ruangan_id, tanggal, jam_mulai, jam_selesai, kuota_maks, durasi_per_pasien, aktif)
+            VALUES 
+              (NEWID(), @sid, @uid, @rid, CAST(SYSDATETIME() AS DATE), '08:00:00', '12:00:00', 15, 20, 1),
+              (NEWID(), @sid, @uid, @rid, CAST(SYSDATETIME() AS DATE), '16:00:00', '20:00:00', 15, 20, 1),
+              (NEWID(), @sid, @uid, @rid, DATEADD(DAY, 1, CAST(SYSDATETIME() AS DATE)), '08:00:00', '12:00:00', 15, 20, 1),
+              (NEWID(), @sid, @uid, @rid, DATEADD(DAY, 1, CAST(SYSDATETIME() AS DATE)), '16:00:00', '20:00:00', 15, 20, 1);
+          END
+        END
+      `);
+      result = await db.query<Record<string, unknown>>(queryStr, { limit, unit_id: unitId });
+    }
     return result.recordset;
   }
 
@@ -119,6 +139,7 @@ export class PublicRepository {
     nama?: string;
     noHp?: string;
     email?: string;
+    jenisKelamin?: 'P' | 'L';
   }): Promise<string | undefined> {
     const result = await db.query<{ pasien_id: string }>(
       `INSERT INTO [Pasien]
@@ -126,11 +147,12 @@ export class PublicRepository {
           gol_darah, status_pernikahan, pekerjaan, email)
        OUTPUT INSERTED.pasien_id
        VALUES (RIGHT('000000' + CAST(NEXT VALUE FOR dbo.Seq_NoRM AS VARCHAR(10)), 6),
-               @nik, @nama, 'P', '1995-01-01', 'Jambi', 'Kota Jambi', @no_telepon,
+               @nik, @nama, @jenis_kelamin, '1995-01-01', 'Jambi', 'Kota Jambi', @no_telepon,
                'O', 'MENIKAH', 'Ibu Rumah Tangga', @email)`,
       {
         nik: input.nik,
         nama: input.nama || 'Pasien Umum',
+        jenis_kelamin: input.jenisKelamin === 'L' ? 'L' : 'P',
         no_telepon: input.noHp || '081234567890',
         email: input.email || null
       }

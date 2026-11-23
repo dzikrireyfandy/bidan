@@ -12,6 +12,7 @@ export interface ReservasiInput {
   nama?: string;
   no_hp?: string;
   email?: string;
+  jenis_kelamin?: 'P' | 'L';
   keluhan?: string;
 }
 
@@ -51,7 +52,8 @@ export class PublicService {
           nik: body.nik,
           nama: body.nama,
           noHp: body.no_hp,
-          email: body.email
+          email: body.email,
+          jenisKelamin: body.jenis_kelamin
         });
       }
     }

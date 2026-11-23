@@ -53,7 +53,14 @@ export class KeuanganService {
       throw ApiError.fromCode('ERR-FIN-01', { sisa_tagihan: sisa });
     }
 
-    const penjaminId = body.penjamin_id ?? (await this.repository.findPenjaminMandiri());
+    let penjaminId: string | null = body.penjamin_id ?? null;
+    if (!penjaminId) {
+      if (body.metode === 'BPJS') {
+        penjaminId = (await this.repository.findPenjaminBpjs()) ?? (await this.repository.findPenjaminMandiri());
+      } else {
+        penjaminId = (await this.repository.findPenjaminMandiri()) ?? (await this.repository.findAnyPenjamin());
+      }
+    }
     if (!penjaminId) {
       throw ApiError.validation('Validasi gagal', [
         { path: ['penjamin_id'], message: 'penjamin_id wajib diisi karena penjamin default tidak tersedia' }

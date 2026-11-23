@@ -22,10 +22,16 @@ export const cekPasienSchema = z
   });
 
 export const reservasiSchema = z.object({
-  pasien_id: z.string().uuid(),
-  jadwal_id: z.string().uuid(),
+  pasien_id: z.string().uuid().optional(),
+  jadwal_id: z.string().uuid().optional(),
+  sesi_id: z.string().uuid().optional(),
   layanan_id: z.string().uuid(),
-  metode_daftar: z.enum(['ONLINE', 'WALK_IN', 'TELEPON']).default('ONLINE')
+  metode_daftar: z.enum(['ONLINE', 'WALK_IN', 'TELEPON']).default('ONLINE'),
+  nik: z.string().optional(),
+  nama: z.string().optional(),
+  no_hp: z.string().optional(),
+  email: z.string().optional(),
+  keluhan: z.string().optional()
 });
 
 export type KontenListInput = z.infer<typeof kontenListSchema>;

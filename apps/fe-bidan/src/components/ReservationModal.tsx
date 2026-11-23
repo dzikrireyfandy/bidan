@@ -110,15 +110,33 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     setErrorMessage(null);
 
     try {
-      // Direct call ke backend database endpoint: POST /api/v1/public/reservasi
+      // 1. Cek apakah pasien sudah ada di database via NIK
+      let existingPasienId: string | undefined = undefined;
+      if (formData.nik && formData.nik.trim().length === 16) {
+        try {
+          const checkRes = await apiClient.post<{ success: boolean; data?: { terdaftar: boolean; pasien_id?: string } }>('/public/pasien/cek', {
+            nik: formData.nik.trim()
+          });
+          if (checkRes.data?.data?.terdaftar && checkRes.data.data.pasien_id) {
+            existingPasienId = checkRes.data.data.pasien_id;
+          }
+        } catch {
+          // Backend createReservasi will handle creating new patient
+        }
+      }
+
+      // 2. Direct call ke backend database endpoint: POST /api/v1/public/reservasi
       const res = await apiClient.post('/public/reservasi', {
+        pasien_id: existingPasienId,
+        jadwal_id: formData.sesi_id,
+        sesi_id: formData.sesi_id,
+        layanan_id: formData.layanan_id,
+        metode_daftar: 'ONLINE',
         nama: formData.nama,
         nik: formData.nik,
         no_hp: formData.no_hp,
         email: formData.email,
         tanggal: formData.tanggal,
-        sesi_id: formData.sesi_id,
-        layanan_id: formData.layanan_id,
         keluhan: formData.keluhan
       });
 
@@ -369,7 +387,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                   disabled={isSubmitting}
                   className="btn btn-primary btn-shimmer"
                 >
-                  {isSubmitting ? 'Memproses ke Database...' : 'Konfirmasi &amp; Terbitkan Tiket'}
+                  {isSubmitting ? 'Memproses...' : 'Konfirmasi'}
                 </button>
               </div>
             </form>

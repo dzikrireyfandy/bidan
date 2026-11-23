@@ -16,24 +16,39 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
     apiClient.post<{ success: boolean; data: any[] }>('/public/layanan/list', {})
       .then((res) => {
         if (res.data?.success && Array.isArray(res.data.data)) {
-          const mapped: LayananItem[] = res.data.data.map((l: any) => ({
-            layanan_id: l.layanan_id || l.kode || 'LAY-0',
-            nama: l.nama || 'Layanan Medis',
-            kategori: l.kategori || 'Kebidanan',
-            deskripsi: l.deskripsi || `Layanan asuhan medis kebidanan ${l.nama} di Praktik Mandiri Bidan Ria Indrasti.`,
-            durasi_menit: l.durasi_menit || 30,
-            highlight: l.highlight || 'Pelayanan Standar Medis',
-            icon: (l.kategori || '').toLowerCase().includes('anc') ? 'anc'
-                : (l.kategori || '').toLowerCase().includes('salin') ? 'persalinan'
-                : (l.kategori || '').toLowerCase().includes('kb') ? 'kb'
-                : (l.kategori || '').toLowerCase().includes('bayi') ? 'newborn'
-                : 'anc',
-            cakupan: Array.isArray(l.cakupan) ? l.cakupan : [
-              'Pemeriksaan klinis langsung oleh bidan berizin resmi',
-              'Pencatatan data medis ke Rekam Medis Elektronik (RME)',
-              'Konseling & pemantauan kesehatan berkala'
-            ]
-          }));
+          const mapped: LayananItem[] = res.data.data.map((l: any) => {
+            const rawNama = (l.nama || 'Layanan Medis').replace(/Dokter\s+Umum/gi, 'Penyakit Umum');
+            const lowerNama = rawNama.toLowerCase();
+            const lowerKat = (l.kategori || '').toLowerCase();
+
+            let iconType = 'anc';
+            if (lowerNama.includes('salin') || lowerKat.includes('salin')) {
+              iconType = 'persalinan';
+            } else if (lowerNama.includes('bbl') || lowerNama.includes('baru lahir') || lowerNama.includes('neonatal')) {
+              iconType = 'bbl';
+            } else if (lowerNama.includes('imun') || lowerNama.includes('vaksin')) {
+              iconType = 'imunisasi';
+            } else if (lowerNama.includes('kb') || lowerNama.includes('kontrasepsi') || lowerNama.includes('iud') || lowerNama.includes('implan')) {
+              iconType = 'kb';
+            } else if (lowerNama.includes('tumbuh') || lowerNama.includes('kembang')) {
+              iconType = 'tumbuh';
+            } else if (lowerNama.includes('umum') || lowerNama.includes('penyakit')) {
+              iconType = 'umum';
+            } else if (lowerNama.includes('lab') || lowerNama.includes('darah')) {
+              iconType = 'lab';
+            }
+
+            return {
+              layanan_id: l.layanan_id || l.kode || 'LAY-0',
+              nama: rawNama,
+              kategori: l.kategori || 'Kebidanan',
+              deskripsi: l.deskripsi || `Layanan asuhan medis kebidanan ${rawNama} di Praktik Mandiri Bidan Ria Indrasti.`,
+              durasi_menit: l.durasi_menit || 30,
+              highlight: l.highlight || 'Pelayanan Standar Medis',
+              icon: iconType,
+              cakupan: []
+            };
+          });
           setLayananList(mapped);
         } else {
           setLayananList([]);
@@ -50,6 +65,69 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
   const renderIcon = (iconType: string) => {
     switch (iconType) {
       case 'anc':
+        // Ikon Kehamilan / ANC: Ibu hamil dengan detak jantung
+        return (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 21a9 9 0 0 1-9-9c0-4.97 4.03-9 9-9 2.5 0 4.75 1.02 6.36 2.64"/>
+            <path d="M16 11c1.5 0 3 1.5 3 3s-1.5 3-3 3"/>
+            <path d="M12 7v6"/>
+            <path d="M9 10h6"/>
+          </svg>
+        );
+      case 'persalinan':
+        // Ikon Persalinan Siaga 24 Jam: Kasur bersalin & cinta persalinan
+        return (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 4v16"/>
+            <path d="M2 8h18a2 2 0 0 1 2 2v10"/>
+            <path d="M2 17h20"/>
+            <path d="M6 8v9"/>
+            <circle cx="10" cy="12" r="2"/>
+          </svg>
+        );
+      case 'bbl':
+        // Ikon Bayi Baru Lahir (BBL): Wajah bayi mungil
+        return (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M9 10h.01"/>
+            <path d="M15 10h.01"/>
+            <path d="M10 15c.5.5 1.5.8 2 .8s1.5-.3 2-.8"/>
+            <path d="M12 3a3 3 0 0 1 3 3"/>
+          </svg>
+        );
+      case 'imunisasi':
+        // Ikon Imunisasi: Suntikan vaksin & pelindung
+        return (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m18 2 4 4"/>
+            <path d="m17 7 3-3"/>
+            <path d="M19 9 8.7 19.3c-.4.4-1 .6-1.6.6H3v-4.1c0-.6.2-1.2.6-1.6L14 3.9"/>
+            <path d="m9 9 6 6"/>
+          </svg>
+        );
+      case 'kb':
+        // Ikon KB / Kontrasepsi: Kalender & siklus pil perencanaan
+        return (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+            <circle cx="12" cy="15" r="2"/>
+          </svg>
+        );
+      case 'tumbuh':
+        // Ikon Tumbuh Kembang: Pertumbuhan dan grafik balita
+        return (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 3v18h18"/>
+            <path d="m19 9-5 5-4-4-3 3"/>
+            <circle cx="9" cy="7" r="2"/>
+          </svg>
+        );
+      case 'umum':
+        // Ikon Konsultasi Penyakit Umum: Stetoskop klinis
         return (
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4.5 3v5a4.5 4.5 0 0 0 9 0V3"/>
@@ -59,35 +137,16 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
             <circle cx="13.5" cy="3" r="1"/>
           </svg>
         );
-      case 'persalinan':
+      case 'lab':
+        // Ikon Pemeriksaan Lab / Penunjang Medis: Tabung reaksi
         return (
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            <path d="M10 2v7.31M14 2v7.31"/>
+            <path d="M8.5 2h7"/>
+            <path d="M14 9.3a6.5 6.5 0 1 1-4 0"/>
+            <path d="M5.52 16h12.96"/>
           </svg>
         );
-      case 'kb':
-        return (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-            <line x1="16" y1="2" x2="16" y2="6"/>
-            <line x1="8" y1="2" x2="8" y2="6"/>
-            <line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
-        );
-      case 'newborn':
-        return (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="8" r="5"/>
-            <path d="M20 21a8 8 0 1 0-16 0"/>
-          </svg>
-        );
-      case 'neonatal':
-        return (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-        );
-      case 'laktasi':
       default:
         return (
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -163,17 +222,19 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                     {item.deskripsi}
                   </p>
 
-                  {/* Scope Checklist */}
-                  <ul className="service-features-list">
-                    {item.cakupan.map((cakup, idx) => (
-                      <li key={idx} className="service-feature-item">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                        <span>{cakup}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  {/* Scope Checklist (Opsional) */}
+                  {item.cakupan && item.cakupan.length > 0 && (
+                    <ul className="service-features-list">
+                      {item.cakupan.map((cakup, idx) => (
+                        <li key={idx} className="service-feature-item">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                          <span>{cakup}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 <div style={{ paddingTop: '1.25rem', borderTop: '1px solid var(--border-light)' }}>

@@ -113,6 +113,30 @@ export class PublicRepository {
     );
     return result.recordset[0];
   }
+
+  async createPasienRingkas(input: {
+    nik: string;
+    nama?: string;
+    noHp?: string;
+    email?: string;
+  }): Promise<string | undefined> {
+    const result = await db.query<{ pasien_id: string }>(
+      `INSERT INTO [Pasien]
+         (no_rm, nik, nama, jenis_kelamin, tgl_lahir, tempat_lahir, alamat, no_telepon,
+          gol_darah, status_pernikahan, pekerjaan, email)
+       OUTPUT INSERTED.pasien_id
+       VALUES (RIGHT('000000' + CAST(NEXT VALUE FOR dbo.Seq_NoRM AS VARCHAR(10)), 6),
+               @nik, @nama, 'P', '1995-01-01', 'Jambi', 'Kota Jambi', @no_telepon,
+               'O', 'MENIKAH', 'Ibu Rumah Tangga', @email)`,
+      {
+        nik: input.nik,
+        nama: input.nama || 'Pasien Umum',
+        no_telepon: input.noHp || '081234567890',
+        email: input.email || null
+      }
+    );
+    return result.recordset[0]?.pasien_id;
+  }
 }
 
 export default PublicRepository;

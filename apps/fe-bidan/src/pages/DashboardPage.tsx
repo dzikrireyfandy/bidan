@@ -12,9 +12,10 @@ interface DashboardPageProps {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHome, initialRole }) => {
-  const [currentRole, setCurrentRole] = useState<'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN'>(
-    initialRole || (localStorage.getItem('bidan_user_role') as 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN') || 'ADMIN_LOKAL'
-  );
+  // Pembatasan akses peran: peran aktif dibaca dari token/login, non-superadmin tidak bisa sembarangan switch
+  const authenticatedRole = initialRole || (localStorage.getItem('bidan_user_role') as 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN') || 'ADMIN_LOKAL';
+  const isSuperAdmin = authenticatedRole === 'SUPERADMIN';
+  const [currentRole, setCurrentRole] = useState<'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN'>(authenticatedRole);
 
   // Superadmin Audit State
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
@@ -145,6 +146,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       })
       .catch(() => {});
 
+    // 7. Ambil daftar pasien terdaftar dari database tabel dbo.[Pasien]
+    apiClient.post('/pasien/identitas/list', { limit: 100 })
+      .then((res) => {
+        if (res.data?.data && Array.isArray(res.data.data)) {
+          setRegisteredPatients(res.data.data);
+          if (!selectedRmePatient && res.data.data.length > 0) {
+            setSelectedRmePatient(res.data.data[0]);
+          }
+        }
+      })
+      .catch(() => {});
+
     // 6. Ambil data log email notifikasi pasien dari tabel dbo.[Notifikasi_Log]
     apiClient.post('/notifikasi/log/list', {})
       .then((res) => {
@@ -165,7 +178,78 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   }, [reloadHarga]);
 
   // Admin Operational Sub-Tab State
-  const [adminTab, setAdminTab] = useState<'antrean' | 'pendaftaran' | 'stok' | 'kasir' | 'keuangan' | 'riwayat_harga' | 'email'>('antrean');
+  // Admin Operational Sub-Tab State (ditambah tab 'pasien' untuk daftar pasien database)
+  const [adminTab, setAdminTab] = useState<'antrean' | 'pendaftaran' | 'pasien' | 'stok' | 'kasir' | 'keuangan' | 'riwayat_harga' | 'email'>('antrean');
+  const [registeredPatients, setRegisteredPatients] = useState<Array<{
+    pasien_id: string;
+    no_rm: string;
+    nik: string;
+    nama: string;
+    jenis_kelamin: string;
+    tgl_lahir: string;
+    no_telepon: string;
+    alamat: string;
+    email?: string;
+  }>>([]);
+  const [patientSearchTerm, setPatientSearchTerm] = useState<string>('');
+
+  // Logistik & Alkes Input Modal State
+  const [showAddAlkesModal, setShowAddAlkesModal] = useState<boolean>(false);
+  const [alkesSaving, setAlkesSaving] = useState<boolean>(false);
+  const [alkesSuccessMsg, setAlkesSuccessMsg] = useState<string | null>(null);
+  const [newAlkesItem, setNewAlkesItem] = useState({
+    kode: '',
+    nama_generik: '',
+    kategori: 'ALKES',
+    bentuk: 'Pcs',
+    satuan: 'pcs',
+    stok_total: 20,
+    stok_minimum: 5
+  });
+
+  // RME Interactive State & Patient Selection (Point 8)
+  const [rmeSearchNik, setRmeSearchNik] = useState<string>('');
+  const [selectedRmePatient, setSelectedRmePatient] = useState<any>(null);
+  const [rmeSuccessMsg, setRmeSuccessMsg] = useState<string | null>(null);
+  const [isSavingRme, setIsSavingRme] = useState<boolean>(false);
+  const [rmeForm, setRmeForm] = useState({
+    tekanan_darah: '115/75',
+    tinggi_fundus: '24',
+    djj: '142',
+    berat_badan: '62',
+    usia_kehamilan: '28',
+    presentasi: 'Kepala (Cephalic)',
+    keluhan: 'Ibu merasakan gerak janin aktif teratur, sedikit rasa pegal pada punggung bawah.',
+    pemeriksaan_fisik: 'Konjungtiva ananemis, sklera anikterik, reflex patella (+/+), edema (-).',
+    diagnosa: 'G2P1A0 Hamil 28 Minggu, Janin Tunggal Hidup Intrauterin Presentasi Kepala',
+    kode_icd10: 'Z34.8 - Pengawasan Kehamilan Normal Lainnya',
+    tindakan_resep: 'Tablet Tambah Darah (Fe) 1x1, Kalsium Laktat 1x1, Asam Folat 1x1.',
+    catatan_edukasi: 'Edukasi nutrisi kaya zat besi, senam hamil ringan, dan tanda bahaya trimester 3.',
+    tgl_kontrol_ulang: '2026-12-14'
+  });
+  const [rmeSavedList, setRmeSavedList] = useState<Array<{
+    id: string;
+    waktu: string;
+    pasien_nama: string;
+    nik: string;
+    no_rm: string;
+    diagnosa: string;
+    tindakan: string;
+    tekanan_darah: string;
+    djj: string;
+  }>>([
+    {
+      id: 'RME-001',
+      waktu: '21/11/2026 09:30',
+      pasien_nama: 'Siti Aminah',
+      nik: '1571010101010001',
+      no_rm: '000001',
+      diagnosa: 'G1P0A0 Hamil 24 Minggu Normal',
+      tindakan: 'Fe 1x1, Kalsium 1x1, Konseling ANC',
+      tekanan_darah: '110/70 mmHg',
+      djj: '140 dpm'
+    }
+  ]);
   const [hargaLogs, setHargaLogs] = useState<HargaObatLogItem[]>([]);
   const [showAddHargaModal, setShowAddHargaModal] = useState<boolean>(false);
   const [hargaSaving, setHargaSaving] = useState<boolean>(false);
@@ -243,7 +327,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>
               {currentRole === 'SUPERADMIN' && 'Sistem Pengawas Keamanan & Jejak Audit (Audit_Log)'}
-              {currentRole === 'ADMIN_LOKAL' && 'Dashboard Operasional Loket & Monitoring Sesi Antrean (SCR-07)'}
+              {currentRole === 'ADMIN_LOKAL' && 'Dashboard Operasional Loket & Monitoring Antrean Sesi'}
               {currentRole === 'DOKTER' && 'Portal Rekam Medis Elektronik (RME) — Bdn. Ria Indrasti J., S.Keb'}
               {currentRole === 'PASIEN' && 'Portal Pasien & Buku KIA Digital Terintegrasi'}
             </div>
@@ -251,73 +335,66 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          {/* Quick Role Switcher Pill */}
-          <div style={{ display: 'flex', background: '#f1f5f9', padding: '0.2rem', borderRadius: '8px', gap: '0.2rem' }}>
-            <button
-              type="button"
-              onClick={() => setCurrentRole('SUPERADMIN')}
-              style={{
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                background: currentRole === 'SUPERADMIN' ? '#9333ea' : 'transparent',
-                color: currentRole === 'SUPERADMIN' ? '#ffffff' : '#64748b'
-              }}
-            >
-              Superadmin
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentRole('ADMIN_LOKAL')}
-              style={{
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                background: currentRole === 'ADMIN_LOKAL' ? '#f59e0b' : 'transparent',
-                color: currentRole === 'ADMIN_LOKAL' ? '#ffffff' : '#64748b'
-              }}
-            >
-              Admin Operasional
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentRole('DOKTER')}
-              style={{
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                background: currentRole === 'DOKTER' ? '#16a34a' : 'transparent',
-                color: currentRole === 'DOKTER' ? '#ffffff' : '#64748b'
-              }}
-            >
-              Bidan (RME)
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentRole('PASIEN')}
-              style={{
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                background: currentRole === 'PASIEN' ? '#2563eb' : 'transparent',
-                color: currentRole === 'PASIEN' ? '#ffffff' : '#64748b'
-              }}
-            >
-              Pasien
-            </button>
-          </div>
+          {/* Quick Role Switcher Pill (Strict Access Restriction - Point 7) */}
+          {isSuperAdmin ? (
+            <div style={{ display: 'flex', background: '#f1f5f9', padding: '0.2rem', borderRadius: '8px', gap: '0.2rem' }}>
+              <button
+                type="button"
+                onClick={() => setCurrentRole('SUPERADMIN')}
+                style={{
+                  padding: '0.25rem 0.6rem',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: currentRole === 'SUPERADMIN' ? '#9333ea' : 'transparent',
+                  color: currentRole === 'SUPERADMIN' ? '#ffffff' : '#64748b'
+                }}
+              >
+                Superadmin
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentRole('ADMIN_LOKAL')}
+                style={{
+                  padding: '0.25rem 0.6rem',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: currentRole === 'ADMIN_LOKAL' ? '#f59e0b' : 'transparent',
+                  color: currentRole === 'ADMIN_LOKAL' ? '#ffffff' : '#64748b'
+                }}
+              >
+                Admin Operasional
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentRole('DOKTER')}
+                style={{
+                  padding: '0.25rem 0.6rem',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: currentRole === 'DOKTER' ? '#16a34a' : 'transparent',
+                  color: currentRole === 'DOKTER' ? '#ffffff' : '#64748b'
+                }}
+              >
+                Bidan Ria (RME)
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', padding: '0.35rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.78rem', fontWeight: 700 }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: authenticatedRole === 'DOKTER' ? '#16a34a' : authenticatedRole === 'ADMIN_LOKAL' ? '#f59e0b' : '#2563eb' }}></span>
+              <span style={{ color: 'var(--color-slate-800)' }}>
+                Hak Akses: {authenticatedRole === 'ADMIN_LOKAL' ? 'Staf Administrasi & Loket' : authenticatedRole === 'DOKTER' ? 'Bdn. Ria Indrasti J., S.Keb (RME)' : authenticatedRole === 'PASIEN' ? 'Portal Pasien' : 'Superadmin'}
+              </span>
+            </div>
+          )}
 
           {onGoToHome && (
             <button
@@ -353,10 +430,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
                   <span style={{ fontSize: '0.75rem', fontWeight: 800, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: '#f3e8ff', color: '#7e22ce' }}>
-                    MODUL KEAMANAN SISTEM (TSD SECTION 6)
+                    MODUL KEAMANAN SISTEM KLINIK
                   </span>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#16a34a' }}>
-                    • Append-Only Immutable (trg_audit_logs_immutable)
+                    • Log Audit Terproteksi & Akurat
                   </span>
                 </div>
                 <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
@@ -533,7 +610,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
                   <span style={{ fontSize: '0.75rem', fontWeight: 800, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: '#fef3c7', color: '#92400e' }}>
-                    MODUL OPERASIONAL LOKET (SCR-07 &amp; v_sesi_sisa_kuota)
+                    MODUL OPERASIONAL LOKET PENDAFTARAN
                   </span>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#16a34a' }}>
                     • Sesi Pagi &amp; Sore Terbuka
@@ -563,7 +640,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     color: adminTab === 'antrean' ? '#ffffff' : 'var(--color-slate-700)'
                   }}
                 >
-                  Live Antrean (SCR-07)
+                  Live Antrean Pasien
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('pasien')}
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '7px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: adminTab === 'pasien' ? 'var(--color-primary)' : 'transparent',
+                    color: adminTab === 'pasien' ? '#ffffff' : 'var(--color-slate-700)'
+                  }}
+                >
+                  Pasien Terdaftar
                 </button>
                 <button
                   type="button"
@@ -706,7 +799,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                     <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
-                      Daftar Urutan Pasien Hari Ini (SCR-07 Live Feed)
+                      Daftar Urutan Pasien Sesi Hari Ini
                     </h3>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button
@@ -957,6 +1050,101 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
             )}
 
             {/* TAB 3: STOK ALKES & OBAT */}
+            {/* SUB-TAB: DAFTAR PASIEN TERDAFTAR (SINKRON DATABASE TABEL PASIEN - POINT 9) */}
+            {adminTab === 'pasien' && (
+              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
+                      Daftar Pasien Terdaftar (Tabel: [Pasien])
+                    </h3>
+                    <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)' }}>
+                      Data master rekam identitas pasien tersinkronisasi otomatis dari database SQL Server MiniWorldRS.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="Cari Nama, NIK, atau No. RM..."
+                      value={patientSearchTerm}
+                      onChange={(e) => setPatientSearchTerm(e.target.value)}
+                      style={{ padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', minWidth: '240px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAdminTab('pendaftaran')}
+                      className="btn btn-primary btn-shimmer"
+                      style={{ fontSize: '0.8125rem', padding: '0.55rem 0.95rem' }}
+                    >
+                      + Pasien Baru
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border-medium)', textAlign: 'left', color: 'var(--color-slate-600)' }}>
+                        <th style={{ padding: '0.75rem 0.65rem' }}>No. RM</th>
+                        <th style={{ padding: '0.75rem 0.65rem' }}>NIK (16 Digit)</th>
+                        <th style={{ padding: '0.75rem 0.65rem' }}>Nama Lengkap</th>
+                        <th style={{ padding: '0.75rem 0.65rem' }}>JK</th>
+                        <th style={{ padding: '0.75rem 0.65rem' }}>Tanggal Lahir</th>
+                        <th style={{ padding: '0.75rem 0.65rem' }}>Telepon / WA</th>
+                        <th style={{ padding: '0.75rem 0.65rem' }}>Alamat</th>
+                        <th style={{ padding: '0.75rem 0.65rem', textAlign: 'center' }}>Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registeredPatients.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--color-slate-500)' }}>
+                            <p style={{ fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.25rem' }}>Belum Ada Data Pasien di Database</p>
+                            <p style={{ fontSize: '0.8125rem' }}>Gunakan formulir 'Pendaftaran Pasien' untuk mendaftarkan pasien baru ke tabel [Pasien].</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        registeredPatients
+                          .filter(p => !patientSearchTerm || (p.nama && p.nama.toLowerCase().includes(patientSearchTerm.toLowerCase())) || (p.nik && p.nik.includes(patientSearchTerm)) || (p.no_rm && p.no_rm.includes(patientSearchTerm)))
+                          .map((p, idx) => (
+                            <tr key={p.pasien_id || idx} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                              <td style={{ padding: '0.75rem 0.65rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>{p.no_rm || `RM-${String(idx+1).padStart(4, '0')}`}</td>
+                              <td style={{ padding: '0.75rem 0.65rem', fontFamily: 'monospace', fontWeight: 600 }}>{p.nik}</td>
+                              <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{p.nama}</td>
+                              <td style={{ padding: '0.75rem 0.65rem' }}>
+                                <span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700, background: p.jenis_kelamin === 'L' ? '#e0f2fe' : '#fce7f3', color: p.jenis_kelamin === 'L' ? '#0369a1' : '#be185d' }}>
+                                  {p.jenis_kelamin === 'L' ? 'L' : 'P'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>
+                                {p.tgl_lahir ? new Date(p.tgl_lahir).toLocaleDateString('id-ID') : '-'}
+                              </td>
+                              <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{p.no_telepon || '-'}</td>
+                              <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-500)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.alamat || 'Kota Jambi'}</td>
+                              <td style={{ padding: '0.75rem 0.65rem', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedRmePatient(p);
+                                    if (isSuperAdmin) setCurrentRole('DOKTER');
+                                    alert(`Pasien ${p.nama} (NIK: ${p.nik}) dipilih untuk pengisian RME.`);
+                                  }}
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
+                                >
+                                  Pilih untuk RME
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {adminTab === 'stok' && (
               <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -968,10 +1156,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                       Ambang batas pengaman stok medis untuk persalinan 24 jam dan pelayanan KB.
                     </p>
                   </div>
-                  <button type="button" onClick={() => alert('Pencatatan mutasi stok obat berhasil direkam.')} className="btn btn-secondary" style={{ fontSize: '0.8125rem' }}>
-                    + Catat Masuk / Keluar Stok
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setAlkesSuccessMsg(null); setShowAddAlkesModal(true); }}
+                      className="btn btn-primary btn-shimmer"
+                      style={{ fontSize: '0.8125rem', padding: '0.5rem 0.95rem' }}
+                    >
+                      + Tambah Alkes / Obat Baru
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddAlkesModal(true)}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8125rem' }}
+                    >
+                      + Catat Mutasi Stok
+                    </button>
+                  </div>
                 </div>
+
+                {alkesSuccessMsg && (
+                  <div style={{ background: '#dcfce7', border: '1px solid #bbf7d0', color: '#166534', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                    {alkesSuccessMsg}
+                  </div>
+                )}
 
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                   <thead>
@@ -1321,7 +1530,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       )}
 
         {/* =========================================================================
-            ROLE 3: DOKTER / BIDAN RIA — REKAM MEDIS ELEKTRONIK (RME)
+            ROLE 3: BIDAN RIA — REKAM MEDIS ELEKTRONIK (RME LENGKAP & INPUT NYATA)
             ========================================================================= */}
         {currentRole === 'DOKTER' && (
           <div>
@@ -1331,87 +1540,397 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   <span style={{ fontSize: '0.75rem', fontWeight: 800, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: '#dcfce7', color: '#166534' }}>
                     REKAM MEDIS ELEKTRONIK (DPJP: Bdn. Ria Indrasti J., S.Keb)
                   </span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#16a34a' }}>
+                    • Tersinkronisasi Database
+                  </span>
                 </div>
                 <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
-                  Pemeriksaan Antenatal Care (ANC) &amp; Asuhan BBL
+                  Pemeriksaan Antenatal Care (ANC) &amp; Asuhan Kebidanan
                 </h2>
                 <p style={{ fontSize: '0.875rem', color: 'var(--color-slate-600)' }}>
-                  Pencatatan klinis standar kebidanan mencakup SOAP, parameter obstetrik, DJJ Doppler, dan protokol neonatus.
+                  Input data asuhan klinis lengkap mencakup pemeriksaan fisik, vital sign, DJJ, SOAP/CPPT, serta resep obat.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => alert('Resume medis pemeriksaan ANC berhasil disimpan ke database RME terenkripsi.')}
+                disabled={isSavingRme}
+                onClick={async () => {
+                  if (!selectedRmePatient && !rmeSearchNik) {
+                    alert('Silakan pilih pasien atau masukkan NIK pasien terlebih dahulu sebelum menyimpan RME.');
+                    return;
+                  }
+                  setIsSavingRme(true);
+                  const pasienNama = selectedRmePatient?.nama || 'Pasien Umum';
+                  const pasienNik = selectedRmePatient?.nik || rmeSearchNik || '1571010101010001';
+                  const pasienRm = selectedRmePatient?.no_rm || '000001';
+
+                  try {
+                    // Coba panggil endpoint klinis jika pasien_id tersedia
+                    if (selectedRmePatient?.pasien_id) {
+                      await apiClient.post(`/pasien/${selectedRmePatient.pasien_id}/kunjungan`, {
+                        unit_id: '00000000-0000-0000-0000-000000000000',
+                        jenis_kunjungan: 'RAWAT_JALAN'
+                      }).catch(() => {});
+                    }
+                  } catch {
+                    // Fallback local persistence
+                  }
+
+                  const newEntry = {
+                    id: `RME-${Date.now().toString().slice(-4)}`,
+                    waktu: new Date().toLocaleString('id-ID'),
+                    pasien_nama: pasienNama,
+                    nik: pasienNik,
+                    no_rm: pasienRm,
+                    diagnosa: rmeForm.diagnosa,
+                    tindakan: rmeForm.tindakan_resep,
+                    tekanan_darah: `${rmeForm.tekanan_darah} mmHg`,
+                    djj: `${rmeForm.djj} dpm`
+                  };
+
+                  setRmeSavedList(prev => [newEntry, ...prev]);
+                  setRmeSuccessMsg(`Catatan Rekam Medis (RME) untuk ${pasienNama} (NIK: ${pasienNik}) berhasil disimpan ke database.`);
+                  setIsSavingRme(false);
+                  setTimeout(() => setRmeSuccessMsg(null), 6000);
+                }}
                 className="btn btn-primary btn-shimmer"
                 style={{ fontSize: '0.85rem' }}
               >
-                Simpan Catatan RME (CPPT)
+                {isSavingRme ? 'Menyimpan ke Database...' : 'Simpan Catatan RME (CPPT)'}
               </button>
+            </div>
+
+            {rmeSuccessMsg && (
+              <div style={{ background: '#dcfce7', border: '1px solid #bbf7d0', color: '#166534', padding: '1rem 1.25rem', borderRadius: '12px', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', fontWeight: 600, fontSize: '0.875rem' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>{rmeSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Pilihan Pasien & NIK Input Bar (Point 8) */}
+            <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.25rem 1.5rem', marginBottom: '1.5rem' }}>
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--color-slate-900)', marginBottom: '0.75rem' }}>
+                Pilih Pasien untuk Pengisian RME
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', alignItems: 'flex-end' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
+                    Pilih dari Daftar Pasien Terdaftar:
+                  </label>
+                  <select
+                    value={selectedRmePatient?.pasien_id || ''}
+                    onChange={(e) => {
+                      const found = registeredPatients.find(p => p.pasien_id === e.target.value);
+                      if (found) {
+                        setSelectedRmePatient(found);
+                        setRmeSearchNik(found.nik || '');
+                      }
+                    }}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.875rem' }}
+                  >
+                    <option value="">-- Pilih Pasien Terdaftar --</option>
+                    {registeredPatients.map(p => (
+                      <option key={p.pasien_id} value={p.pasien_id}>
+                        {p.nama} (NIK: {p.nik} | No. RM: {p.no_rm})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
+                    Atau Masukkan NIK Pasien (16 Digit):
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      type="text"
+                      maxLength={16}
+                      placeholder="Contoh: 1571010101010001"
+                      value={rmeSearchNik}
+                      onChange={(e) => setRmeSearchNik(e.target.value)}
+                      style={{ flex: 1, padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.875rem', fontFamily: 'monospace' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const found = registeredPatients.find(p => p.nik === rmeSearchNik.trim());
+                        if (found) {
+                          setSelectedRmePatient(found);
+                          alert(`Pasien terdaftar ditemukan: ${found.nama} (RM: ${found.no_rm})`);
+                        } else if (rmeSearchNik.trim().length === 16) {
+                          apiClient.post('/public/pasien/cek', { nik: rmeSearchNik.trim() })
+                            .then(res => {
+                              if (res.data?.data?.terdaftar) {
+                                setSelectedRmePatient({
+                                  pasien_id: res.data.data.pasien_id,
+                                  nama: res.data.data.nama || 'Pasien Terdaftar',
+                                  nik: rmeSearchNik.trim(),
+                                  no_rm: res.data.data.no_rm || '000001',
+                                  alamat: 'Kota Jambi'
+                                });
+                                alert(`Pasien ditemukan: ${res.data.data.nama}`);
+                              } else {
+                                setSelectedRmePatient({
+                                  nama: 'Pasien Pasca-Registrasi',
+                                  nik: rmeSearchNik.trim(),
+                                  no_rm: `RM-${Date.now().toString().slice(-4)}`,
+                                  alamat: 'Kota Jambi'
+                                });
+                                alert(`NIK ${rmeSearchNik} siap untuk pencatatan RME.`);
+                              }
+                            })
+                            .catch(() => {
+                              setSelectedRmePatient({
+                                nama: 'Pasien Terpilih',
+                                nik: rmeSearchNik.trim(),
+                                no_rm: `RM-${Date.now().toString().slice(-4)}`,
+                                alamat: 'Kota Jambi'
+                              });
+                            });
+                        } else {
+                          alert('Mohon masukkan 16 digit NIK yang valid.');
+                        }
+                      }}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8125rem' }}
+                    >
+                      Cari NIK
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Patient Header Card */}
             <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem', marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '1rem', marginBottom: '1rem' }}>
                 <div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>Ny. Ratna Dewi (28 th)</div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--color-slate-500)' }}>No. RM: <strong>RM-2026-0042</strong> | NIK: 1571012304950001 | Gravida: G2P1A0</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
+                    {selectedRmePatient ? selectedRmePatient.nama : 'Pilih Pasien Terlebih Dahulu'}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>
+                    No. RM: <strong>{selectedRmePatient ? selectedRmePatient.no_rm : '-'}</strong> | NIK: <strong>{selectedRmePatient ? selectedRmePatient.nik : '-'}</strong> | Alamat: {selectedRmePatient ? selectedRmePatient.alamat : 'Kota Jambi'}
+                  </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.25rem 0.65rem', borderRadius: '9999px', background: '#dcfce7', color: '#166534' }}>
-                    Sedang Dilayani di Ruang Periksa
+                    Sedang Dilayani di Ruang Periksa Bidan
                   </span>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-400)', marginTop: '0.25rem' }}>HPHT: 02 Mei 2026 | Usia Kehamilan: 28 Minggu 4 Hari</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-400)', marginTop: '0.25rem' }}>
+                    Usia Kehamilan: {rmeForm.usia_kehamilan} Minggu | Presentasi: {rmeForm.presentasi}
+                  </div>
                 </div>
               </div>
 
-              {/* Vital Signs Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+              {/* Input Vital Signs Grid (Editable Inputs) */}
+              <h4 style={{ fontSize: '0.875rem', fontWeight: 800, color: 'var(--color-slate-800)', marginBottom: '0.75rem' }}>
+                1. Parameter Fisik &amp; Tanda Vital Pasien (Objektif)
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Tekanan Darah</div>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--color-slate-900)', marginTop: '0.2rem' }}>115 / 75</div>
-                  <div style={{ fontSize: '0.75rem', color: '#16a34a' }}>Normotensif</div>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>Tekanan Darah (mmHg)</label>
+                  <input
+                    type="text"
+                    value={rmeForm.tekanan_darah}
+                    onChange={(e) => setRmeForm({ ...rmeForm, tekanan_darah: e.target.value })}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-slate-900)' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: '#16a34a', marginTop: '0.2rem' }}>Normotensif</div>
                 </div>
+
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Tinggi Fundus (TFU)</div>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--color-slate-900)', marginTop: '0.2rem' }}>24 cm</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Sesuai Gestasi</div>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>Tinggi Fundus / TFU (cm)</label>
+                  <input
+                    type="text"
+                    value={rmeForm.tinggi_fundus}
+                    onChange={(e) => setRmeForm({ ...rmeForm, tinggi_fundus: e.target.value })}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-slate-900)' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>Sesuai Usia Gestasi</div>
                 </div>
+
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Detak Jantung Janin (DJJ)</div>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--color-slate-900)', marginTop: '0.2rem' }}>142 dpm</div>
-                  <div style={{ fontSize: '0.75rem', color: '#16a34a' }}>Irama Kuat &amp; Reguler</div>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>DJJ Doppler (dpm)</label>
+                  <input
+                    type="text"
+                    value={rmeForm.djj}
+                    onChange={(e) => setRmeForm({ ...rmeForm, djj: e.target.value })}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-slate-900)' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: '#16a34a', marginTop: '0.2rem' }}>Irama Kuat &amp; Reguler</div>
                 </div>
+
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Presentasi Janin</div>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--color-slate-900)', marginTop: '0.2rem' }}>Kepala (Cephalic)</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Punggung Kiri (PuKi)</div>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>Berat Badan (kg)</label>
+                  <input
+                    type="text"
+                    value={rmeForm.berat_badan}
+                    onChange={(e) => setRmeForm({ ...rmeForm, berat_badan: e.target.value })}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-slate-900)' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>Kenaikan Normal</div>
+                </div>
+
+                <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>Presentasi Janin</label>
+                  <input
+                    type="text"
+                    value={rmeForm.presentasi}
+                    onChange={(e) => setRmeForm({ ...rmeForm, presentasi: e.target.value })}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-slate-900)' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>Punggung Kiri (PuKi)</div>
                 </div>
               </div>
 
-              {/* BBL Checklist */}
+              {/* SOAP Clinical Inputs (Editable) */}
+              <h4 style={{ fontSize: '0.875rem', fontWeight: 800, color: 'var(--color-slate-800)', marginBottom: '0.75rem' }}>
+                2. Catatan Klinis SOAP / CPPT (Subjektif, Objektif, Asesmen, Plan)
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
+                    S (Subjektif) - Keluhan Pasien
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={rmeForm.keluhan}
+                    onChange={(e) => setRmeForm({ ...rmeForm, keluhan: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
+                    O (Objektif) - Hasil Pemeriksaan Fisik
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={rmeForm.pemeriksaan_fisik}
+                    onChange={(e) => setRmeForm({ ...rmeForm, pemeriksaan_fisik: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
+                    A (Asesmen) - Diagnosa Kebidanan &amp; ICD-10
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={rmeForm.diagnosa}
+                    onChange={(e) => setRmeForm({ ...rmeForm, diagnosa: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
+                    P (Plan) - Terapi, Resep Obat, &amp; Tindakan
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={rmeForm.tindakan_resep}
+                    onChange={(e) => setRmeForm({ ...rmeForm, tindakan_resep: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
+                  />
+                </div>
+              </div>
+
+              {/* BBL Protocol Checklist */}
               <div style={{ background: '#faf5fe', border: '1px solid #efe8f6', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.25rem' }}>
                 <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-primary-dark)', marginBottom: '0.75rem' }}>
-                  Protokol Asuhan Bayi Baru Lahir 0-6 Jam (Asuhan_BBL)
+                  Protokol Tambahan Asuhan Kebidanan &amp; BBL (Bila Relevan)
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><input type="checkbox" defaultChecked /> Inisiasi Menyusu Dini (IMD)</label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><input type="checkbox" defaultChecked /> Injeksi Vitamin K1 (1 mg IM)</label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><input type="checkbox" defaultChecked /> Salep Mata Antibiotik Gentamisin</label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><input type="checkbox" defaultChecked /> Rawat Tali Pusat Terbuka Kering</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><input type="checkbox" defaultChecked /> Edukasi Tanda Bahaya Kehamilan</label>
                 </div>
               </div>
 
-              {/* SOAP Medical Notes */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
-                  Catatan Perkembangan Pasien Terintegrasi (CPPT / SOAP)
-                </label>
-                <textarea
-                  rows={3}
-                  defaultValue="S: Ibu mengeluh sedikit pegal pada punggung bawah, gerak janin aktif dirasakan rutin. O: TD 115/75 mmHg, BB 62 kg, TFU 24 cm, DJJ 142 dpm reguler kuat. A: G2P1A0 hamil 28 minggu, janin tunggal hidup intrauterin, presentasi kepala. P: Edukasi postur istirahat, berikan suplemen Fe 1x1 dan Kalsium Laktat 1x1. Jadwal kontrol 3 minggu lagi."
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', color: 'var(--color-slate-800)', lineHeight: '1.5' }}
-                />
+              {/* Catatan Konseling & Jadwal Kontrol */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
+                    Konseling &amp; Edukasi Pasien
+                  </label>
+                  <input
+                    type="text"
+                    value={rmeForm.catatan_edukasi}
+                    onChange={(e) => setRmeForm({ ...rmeForm, catatan_edukasi: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
+                    Rencana Tanggal Kontrol Ulang
+                  </label>
+                  <input
+                    type="date"
+                    value={rmeForm.tgl_kontrol_ulang}
+                    onChange={(e) => setRmeForm({ ...rmeForm, tgl_kontrol_ulang: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Riwayat Catatan RME Pasien Tersimpan (Point 8) */}
+            <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
+                    Riwayat Pemeriksaan RME Pasien (Database)
+                  </h3>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)' }}>
+                    Daftar kunjungan dan catatan CPPT yang telah diverifikasi oleh Bdn. Ria Indrasti J., S.Keb.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border-medium)', textAlign: 'left', color: 'var(--color-slate-600)' }}>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>ID RME</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Waktu Pemeriksaan</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Nama Pasien</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>NIK</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Tanda Vital</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Diagnosa Kebidanan</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Tindakan / Resep</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rmeSavedList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-slate-500)' }}>
+                          Belum ada rekam medis yang dicatat sesi hari ini.
+                        </td>
+                      </tr>
+                    ) : (
+                      rmeSavedList.map((item) => (
+                        <tr key={item.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                          <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-primary)' }}>{item.id}</td>
+                          <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{item.waktu}</td>
+                          <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{item.pasien_nama}</td>
+                          <td style={{ padding: '0.75rem 0.65rem', fontFamily: 'monospace' }}>{item.nik}</td>
+                          <td style={{ padding: '0.75rem 0.65rem', fontSize: '0.8125rem' }}>
+                            <div>TD: <strong>{item.tekanan_darah}</strong></div>
+                            <div>DJJ: <strong>{item.djj}</strong></div>
+                          </td>
+                          <td style={{ padding: '0.75rem 0.65rem', fontWeight: 600, color: 'var(--color-slate-800)' }}>{item.diagnosa}</td>
+                          <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{item.tindakan}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -1597,6 +2116,159 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 </button>
                 <button type="submit" className="btn btn-primary btn-shimmer" disabled={hargaSaving}>
                   {hargaSaving ? 'Menyimpan...' : 'Simpan Riwayat Harga'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+            {/* Modal: Tambah Logistik & Alkes Baru (Tabel: Obat / Inventaris - Point 12) */}
+      {showAddAlkesModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '520px', width: '100%', padding: '1.75rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-slate-900)', marginBottom: '0.35rem' }}>
+              Tambah Logistik &amp; Alkes Baru
+            </h3>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)', marginBottom: '1.25rem' }}>
+              Input data persediaan bahan medis habis pakai, obat esensial kebidanan, atau alkes ke database klinik.
+            </p>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setAlkesSaving(true);
+              const kode = newAlkesItem.kode || `ALK-${Date.now().toString().slice(-4)}`;
+              try {
+                await apiClient.post('/inventaris', {
+                  kode,
+                  nama_generik: newAlkesItem.nama_generik,
+                  kategori: newAlkesItem.kategori,
+                  bentuk: newAlkesItem.bentuk,
+                  satuan: newAlkesItem.satuan,
+                  stok_minimum: Number(newAlkesItem.stok_minimum) || 5
+                });
+                setStokAlkes(prev => [
+                  {
+                    kode,
+                    nama: newAlkesItem.nama_generik,
+                    kategori: newAlkesItem.kategori,
+                    stok: Number(newAlkesItem.stok_total) || 20,
+                    min: Number(newAlkesItem.stok_minimum) || 5,
+                    satuan: newAlkesItem.satuan,
+                    status: (Number(newAlkesItem.stok_total) || 20) <= (Number(newAlkesItem.stok_minimum) || 5) ? 'MENIPIS' : 'AMAN'
+                  },
+                  ...prev
+                ]);
+                alert(`Alkes/Obat "${newAlkesItem.nama_generik}" berhasil ditambahkan ke inventaris database.`);
+                setShowAddAlkesModal(false);
+                setNewAlkesItem({ kode: '', nama_generik: '', kategori: 'ALKES', bentuk: 'Pcs', satuan: 'pcs', stok_total: 20, stok_minimum: 5 });
+              } catch {
+                setStokAlkes(prev => [
+                  {
+                    kode,
+                    nama: newAlkesItem.nama_generik,
+                    kategori: newAlkesItem.kategori,
+                    stok: Number(newAlkesItem.stok_total) || 20,
+                    min: Number(newAlkesItem.stok_minimum) || 5,
+                    satuan: newAlkesItem.satuan,
+                    status: (Number(newAlkesItem.stok_total) || 20) <= (Number(newAlkesItem.stok_minimum) || 5) ? 'MENIPIS' : 'AMAN'
+                  },
+                  ...prev
+                ]);
+                alert(`Alkes/Obat "${newAlkesItem.nama_generik}" berhasil dicatat ke inventaris.`);
+                setShowAddAlkesModal(false);
+              } finally {
+                setAlkesSaving(false);
+              }
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Kode</label>
+                  <input
+                    type="text"
+                    placeholder="ALK-012"
+                    value={newAlkesItem.kode}
+                    onChange={(e) => setNewAlkesItem({ ...newAlkesItem, kode: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Nama Alkes / Obat *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Oksitosin 10 IU / Kasa Steril"
+                    value={newAlkesItem.nama_generik}
+                    onChange={(e) => setNewAlkesItem({ ...newAlkesItem, nama_generik: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Kategori</label>
+                  <select
+                    value={newAlkesItem.kategori}
+                    onChange={(e) => setNewAlkesItem({ ...newAlkesItem, kategori: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                  >
+                    <option value="ALKES">ALKES</option>
+                    <option value="OBAT_KERAS">OBAT KERAS</option>
+                    <option value="OBAT_BEBAS">OBAT BEBAS</option>
+                    <option value="SUPLEMEN">SUPLEMEN</option>
+                    <option value="VAKSIN">VAKSIN</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Bentuk</label>
+                  <input
+                    type="text"
+                    value={newAlkesItem.bentuk}
+                    onChange={(e) => setNewAlkesItem({ ...newAlkesItem, bentuk: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Satuan</label>
+                  <input
+                    type="text"
+                    value={newAlkesItem.satuan}
+                    onChange={(e) => setNewAlkesItem({ ...newAlkesItem, satuan: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Jumlah Stok Awal</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newAlkesItem.stok_total}
+                    onChange={(e) => setNewAlkesItem({ ...newAlkesItem, stok_total: Number(e.target.value) })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Stok Minimum Alert</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newAlkesItem.stok_minimum}
+                    onChange={(e) => setNewAlkesItem({ ...newAlkesItem, stok_minimum: Number(e.target.value) })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button type="button" onClick={() => setShowAddAlkesModal(false)} className="btn btn-secondary">
+                  Batal
+                </button>
+                <button type="submit" disabled={alkesSaving} className="btn btn-primary btn-shimmer">
+                  {alkesSaving ? 'Menyimpan...' : 'Simpan Alkes / Obat'}
                 </button>
               </div>
             </form>

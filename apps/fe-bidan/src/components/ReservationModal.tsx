@@ -1,8 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { apiClient } from '../api/client';
+import { apiClient, session } from '../api/client';
 import { KLINIK_INFO } from '../constants/klinik';
-import { LayananItem, SesiPraktikItem, ReservasiData } from '../api/types';
+import { LayananItem, SesiPraktikItem } from '../api/types';
 import { pesanErrorApi } from '../api/errors';
+
+export const formatJam = (val: any): string => {
+  if (!val) return '08:00';
+  const str = String(val);
+  const match = str.match(/T(\d{2}:\d{2})/);
+  if (match && match[1]) return match[1];
+  const matchTime = str.match(/^(\d{2}:\d{2})/);
+  if (matchTime && matchTime[1]) return matchTime[1];
+  return str.slice(0, 5);
+};
 
 interface ReservationModalProps {
   isOpen: boolean;
@@ -21,6 +31,8 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
   const [layananList, setLayananList] = useState<LayananItem[]>([]);
   const [sesiList, setSesiList] = useState<SesiPraktikItem[]>([]);
 
+  const isAlreadyLoggedIn = Boolean(session.bacaToken() && localStorage.getItem('bidan_user_role') === 'PASIEN');
+
   const [successTicket, setSuccessTicket] = useState<{
     kode: string;
     nomorAntrean: string;
@@ -30,21 +42,32 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     tanggal: string;
   } | null>(null);
 
-  const [formData, setFormData] = useState<ReservasiData>({
+  const [formData, setFormData] = useState({
     nama: '',
+    username: '',
     nik: '',
+    password: '',
     no_hp: '',
     email: '',
-    jenis_kelamin: 'P',
+    jenis_kelamin: 'P' as 'P' | 'L',
     tanggal: new Date().toISOString().split('T')[0] || '',
     sesi_id: '',
     layanan_id: selectedLayanan ? selectedLayanan.layanan_id : '',
-    keluhan: '',
-    is_pasien_lama: false
+    keluhan: ''
   });
 
   useEffect(() => {
     if (!isOpen) return;
+
+    if (isAlreadyLoggedIn) {
+      const savedUser = localStorage.getItem('bidan_user_identifier') || '';
+      const savedNama = localStorage.getItem('bidan_pasien_nama') || '';
+      setFormData(prev => ({
+        ...prev,
+        username: savedUser,
+        nama: savedNama || prev.nama
+      }));
+    }
 
     // Ambil daftar layanan dari database
     apiClient.post<{ success: boolean; data: any[] }>('/public/layanan/list', {})
@@ -82,8 +105,8 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             return {
               sesi_id: s.jadwal_id || s.sesi_id || `SESI-${idx}`,
               nama: s.nama || (idx === 0 ? 'Sesi Pagi' : 'Sesi Sore'),
-              jam_mulai: s.jam_mulai || (idx === 0 ? '08:00' : '16:00'),
-              jam_selesai: s.jam_selesai || (idx === 0 ? '12:00' : '20:00'),
+              jam_mulai: formatJam(s.jam_mulai || (idx === 0 ? '08:00' : '16:00')),
+              jam_selesai: formatJam(s.jam_selesai || (idx === 0 ? '12:00' : '20:00')),
               kuota_maks: kuotaMaks,
               durasi_per_pasien: s.durasi_per_pasien || 20,
               terisi: kuotaMaks - sisa,
@@ -99,7 +122,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
         }
       })
       .catch(() => {});
-  }, [isOpen]);
+  }, [isOpen, isAlreadyLoggedIn]);
 
   useEffect(() => {
     if (selectedLayanan) {
@@ -115,56 +138,76 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     setErrorMessage(null);
 
     if (!formData.sesi_id || formData.sesi_id.trim() === '') {
-      setErrorMessage('Tolong pilih sesi jadwal terlebih dahulu.');
+      setErrorMessage('Tolong pilih jadwal terlebih dahulu');
       setIsSubmitting(false);
       return;
     }
     if (!formData.layanan_id || formData.layanan_id.trim() === '') {
-      setErrorMessage('Tolong pilih jenis layanan pemeriksaan terlebih dahulu.');
+      setErrorMessage('Tolong pilih layanan pemeriksaan terlebih dahulu');
+      setIsSubmitting(false);
+      return;
+    }
+    if (!formData.nik || formData.nik.trim().length !== 16) {
+      setErrorMessage('NIK harus terdiri dari 16 digit angka');
+      setIsSubmitting(false);
+      return;
+    }
+    if (!isAlreadyLoggedIn && (!formData.password || formData.password.length < 8)) {
+      setErrorMessage('Kata sandi akun minimal 8 karakter');
+      setIsSubmitting(false);
+      return;
+    }
+    if (!formData.email || !formData.email.includes('@')) {
+      setErrorMessage('Email aktif wajib diisi untuk pengiriman notifikasi tiket');
       setIsSubmitting(false);
       return;
     }
 
     try {
-      // 1. Cek apakah pasien sudah ada di database via NIK
+      // 1. Cek pasien terdaftar
       let existingPasienId: string | undefined = undefined;
-      if (formData.nik && formData.nik.trim().length === 16) {
-        try {
-          const checkRes = await apiClient.post<{ success: boolean; data?: { terdaftar: boolean; pasien_id?: string } }>('/public/pasien/cek', {
-            nik: formData.nik.trim()
-          });
-          if (checkRes.data?.data?.terdaftar && checkRes.data.data.pasien_id) {
-            existingPasienId = checkRes.data.data.pasien_id;
-          }
-        } catch {
-          // Backend createReservasi will handle creating new patient
+      try {
+        const checkRes = await apiClient.post<{ success: boolean; data?: { terdaftar: boolean; pasien_id?: string } }>('/public/pasien/cek', {
+          nik: formData.nik.trim()
+        });
+        if (checkRes.data?.data?.terdaftar && checkRes.data.data.pasien_id) {
+          existingPasienId = checkRes.data.data.pasien_id;
         }
+      } catch {
+        // Fallback
       }
 
-      // 2. Direct call ke backend database endpoint: POST /api/v1/public/reservasi
+      // 2. Direct call ke database endpoint: POST /api/v1/public/reservasi
+      // Menyimpan data pasien, akun pengguna (PASIEN), dan tiket reservasi ke SQL Server
       const res = await apiClient.post('/public/reservasi', {
         pasien_id: existingPasienId,
         jadwal_id: formData.sesi_id,
         sesi_id: formData.sesi_id,
         layanan_id: formData.layanan_id,
         metode_daftar: 'ONLINE',
-        nama: formData.nama,
-        nik: formData.nik,
-        no_hp: formData.no_hp,
-        email: formData.email,
+        nama: formData.nama.trim(),
+        username: (formData.username || formData.nama).trim(),
+        nik: formData.nik.trim(),
+        password: formData.password || undefined,
+        no_hp: formData.no_hp.trim(),
+        email: formData.email.trim(),
         jenis_kelamin: formData.jenis_kelamin,
         tanggal: formData.tanggal,
-        keluhan: formData.keluhan
+        keluhan: formData.keluhan.trim()
       });
 
       const d = res.data?.data || {};
       const targetLayanan = layananList.find(l => l.layanan_id === formData.layanan_id);
       const targetSesi = sesiList.find(s => s.sesi_id === formData.sesi_id);
 
+      const sesiTimeClean = targetSesi
+        ? `${targetSesi.jam_mulai} - ${targetSesi.jam_selesai} WIB`
+        : '08:00 - 12:00 WIB';
+
       setSuccessTicket({
         kode: d.kode_reservasi || `RES-${Date.now().toString().slice(-6)}`,
-        nomorAntrean: d.nomor_antrean || `A-${Math.floor(Math.random() * 20 + 1).toString().padStart(3, '0')}`,
-        estimasiJam: d.estimasi_jam || (targetSesi ? `${targetSesi.jam_mulai} WIB` : '09:00 WIB'),
+        nomorAntrean: d.nomor_antrean ? `A-${String(d.nomor_antrean).padStart(3, '0')}` : `A-${Math.floor(Math.random() * 20 + 1).toString().padStart(3, '0')}`,
+        estimasiJam: sesiTimeClean,
         layananNama: targetLayanan?.nama || 'Pemeriksaan Medis',
         sesiNama: targetSesi?.nama || 'Sesi Terjadwal',
         tanggal: formData.tanggal
@@ -201,51 +244,48 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
               </svg>
             </div>
             <div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
-                {step === 3 ? 'Tiket Reservasi Terbit' : 'Reservasi Sesi Pemeriksaan'}
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)', margin: 0 }}>
+                Reservasi Layanan &amp; Antrean Online
               </h3>
-              <p style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>
-                {KLINIK_INFO.nama}
+              <p style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', margin: '0.1rem 0 0 0' }}>
+                Praktik Mandiri Bidan Ria Indrasti — Simpang Rimbo
               </p>
             </div>
           </div>
-
           <button
             type="button"
             onClick={handleResetAndClose}
-            style={{ width: '32px', height: '32px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-slate-400)', background: '#f1f5f9' }}
+            style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f1f5f9', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-slate-500)', cursor: 'pointer' }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            &times;
           </button>
         </div>
 
         {/* Modal Body */}
         <div style={{ padding: '1.75rem', overflowY: 'auto' }}>
           {errorMessage && (
-            <div style={{ marginBottom: '1.25rem', padding: '0.85rem 1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', color: '#b91c1c', fontSize: '0.85rem', fontWeight: 600 }}>
-              {errorMessage}
+            <div style={{ marginBottom: '1.25rem', padding: '0.85rem 1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', color: '#b91c1c', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>{errorMessage}</span>
             </div>
           )}
 
           {step === 1 && (
             <div>
               <h4 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-slate-900)', marginBottom: '1.25rem' }}>
-                Langkah 1: Pilih Layanan &amp; Sesi Waktu
+                Langkah 1: Pilih Layanan &amp; Sesi Praktik
               </h4>
 
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.5rem' }}>
-                  Pilih Layanan Asuhan Klinis &amp; Pemeriksaan *
+                  Jenis Layanan Pemeriksaan *
                 </label>
                 <select
                   value={formData.layanan_id}
                   onChange={(e) => setFormData({ ...formData, layanan_id: e.target.value })}
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
                 >
-                  <option value="">-- Pilih Layanan Kebidanan &amp; Pemeriksaan Umum --</option>
+                  <option value="">-- Pilih Layanan Kebidanan --</option>
                   {layananList.map((l) => (
                     <option key={l.layanan_id} value={l.layanan_id}>
                       {l.nama} ({l.kategori})
@@ -280,25 +320,23 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                     <option value="">-- Tolong Pilih Sesi Jadwal --</option>
                     {sesiList.map((s) => (
                       <option key={s.sesi_id} value={s.sesi_id} disabled={s.sisa_kuota <= 0}>
-                        {s.nama} ({s.jam_mulai} - {s.jam_selesai}) - Sisa {s.sisa_kuota} Kuota {s.sisa_kuota <= 0 ? '(Penuh)' : ''}
+                        {s.nama} ({s.jam_mulai} - {s.jam_selesai} WIB) - Sisa {s.sisa_kuota} Kuota {s.sisa_kuota <= 0 ? '(Penuh)' : ''}
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
 
-
-
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                   type="button"
                   onClick={() => {
                     if (!formData.layanan_id) {
-                      setErrorMessage('Tolong pilih layanan asuhan klinis terlebih dahulu.');
+                      setErrorMessage('Tolong pilih layanan pemeriksaan terlebih dahulu.');
                       return;
                     }
                     if (!formData.sesi_id) {
-                      setErrorMessage('Tolong pilih sesi jadwal terlebih dahulu.');
+                      setErrorMessage('Tolong pilih jadwal terlebih dahulu');
                       return;
                     }
                     setErrorMessage(null);
@@ -306,7 +344,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                   }}
                   className="btn btn-primary btn-shimmer"
                 >
-                  <span>Lanjutkan ke Data Diri</span>
+                  <span>Lanjutkan ke Akun &amp; Data Pasien</span>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="5" y1="12" x2="19" y2="12"/>
                     <polyline points="12 5 19 12 12 19"/>
@@ -318,9 +356,12 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
           {step === 2 && (
             <form onSubmit={handleSubmit}>
-              <h4 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-slate-900)', marginBottom: '1.25rem' }}>
-                Langkah 2: Data Pasien &amp; Kontak
+              <h4 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-slate-900)', marginBottom: '0.5rem' }}>
+                Langkah 2: Pembuatan Akun &amp; Data Diri Pasien (Database Riil)
               </h4>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)', marginBottom: '1.25rem' }}>
+                {isAlreadyLoggedIn ? 'Anda telah login sebagai pasien terdaftar. Silakan lengkapi keluhan kunjungan.' : 'Akun ini disimpan ke tabel Akun_Pengguna untuk login panel, melihat riwayat kunjungan, dan notifikasi.'}
+              </p>
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
@@ -329,7 +370,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Ratna Sari"
+                  placeholder="Contoh: Ratna Dewi"
                   value={formData.nama}
                   onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
@@ -339,15 +380,63 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
+                    Username Panel Pasien *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    disabled={isAlreadyLoggedIn}
+                    placeholder="Contoh: ratnadewi"
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none', background: isAlreadyLoggedIn ? '#f8fafc' : '#ffffff' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
                     Nomor Induk Kependudukan (NIK) *
                   </label>
                   <input
                     type="text"
                     required
                     maxLength={16}
-                    placeholder="16 digit NIK"
+                    placeholder="16 digit NIK terdaftar"
                     value={formData.nik}
-                    onChange={(e) => setFormData({ ...formData, nik: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, nik: e.target.value.replace(/\D/g, '') })}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none', fontFamily: 'monospace' }}
+                  />
+                </div>
+              </div>
+
+              {!isAlreadyLoggedIn && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
+                    Kata Sandi Akun Pasien * (Minimal 8 karakter)
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    placeholder="Masukkan kata sandi untuk login"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
+                  />
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
+                    Email Aktif * (Notifikasi &amp; Reset OTP)
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="nama@email.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
                   />
                 </div>
@@ -359,7 +448,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                   <input
                     type="tel"
                     required
-                    placeholder="Contoh: 08123456789"
+                    placeholder="08123456789"
                     value={formData.no_hp}
                     onChange={(e) => setFormData({ ...formData, no_hp: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
@@ -367,7 +456,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                 </div>
               </div>
 
-              {/* Pilihan Jenis Kelamin (P / L) - Requirement 6 */}
+              {/* Pilihan Jenis Kelamin (P / L) */}
               <div style={{ marginBottom: '1rem', background: '#faf5fe', padding: '0.85rem 1rem', borderRadius: '10px', border: '1px solid #efe8f6' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
                   Jenis Kelamin Pasien *
@@ -396,26 +485,13 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                 </div>
               </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
-                  Alamat Email Pasien (Opsional, untuk E-Tiket &amp; Pengingat)
-                </label>
-                <input
-                  type="email"
-                  placeholder="Contoh: pasien@gmail.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
-                />
-              </div>
-
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
                   Keluhan / Alasan Kunjungan
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Contoh: Pemeriksaan kehamilan rutin, konsultasi KB..."
+                  placeholder="Contoh: Pemeriksaan kehamilan rutin, keluhan mual, kontrol pasca salin..."
                   value={formData.keluhan}
                   onChange={(e) => setFormData({ ...formData, keluhan: e.target.value })}
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
@@ -436,7 +512,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                   disabled={isSubmitting}
                   className="btn btn-primary btn-shimmer"
                 >
-                  {isSubmitting ? 'Memproses...' : 'Konfirmasi'}
+                  {isSubmitting ? 'Menyimpan ke Database...' : 'Konfirmasi'}
                 </button>
               </div>
             </form>
@@ -454,7 +530,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                 Reservasi Berhasil Dikonfirmasi
               </h4>
               <p style={{ fontSize: '0.875rem', color: 'var(--color-slate-600)', marginTop: '0.25rem' }}>
-                Nomor antrean resmi telah tercatat di sistem rekam medis.
+                Nomor antrean dan akun pasien resmi telah tersimpan secara permanen di database SQL Server.
               </p>
 
               {/* Digital Ticket Card */}
@@ -468,15 +544,16 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                 <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-slate-800)' }}>
                   {successTicket.layananNama}
                 </div>
-                <div style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)', marginTop: '0.25rem' }}>
-                  {successTicket.sesiNama} | Tanggal: {successTicket.tanggal}
+                <div style={{ fontSize: '0.8125rem', color: 'var(--color-slate-600)', marginTop: '0.25rem', fontWeight: 600 }}>
+                  {successTicket.sesiNama} ({successTicket.estimasiJam})
                 </div>
-
-
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', marginTop: '0.15rem' }}>
+                  Tanggal Kunjungan: {successTicket.tanggal}
+                </div>
               </div>
 
               <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)', marginBottom: '1.5rem' }}>
-                Alamat: {KLINIK_INFO.alamat}
+                Alamat Klinik: {KLINIK_INFO.alamat}
               </p>
 
               <button
@@ -494,3 +571,5 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     </div>
   );
 };
+
+export default ReservationModal;

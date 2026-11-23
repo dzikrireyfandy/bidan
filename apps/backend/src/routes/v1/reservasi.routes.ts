@@ -25,7 +25,7 @@ import {
 const router = Router();
 
 const FRONT_OFFICE = [P.SUPERADMIN, P.ADMIN_LOKAL, P.RESEPSIONIS];
-const STATUS_ROLES = [P.SUPERADMIN, P.DOKTER, P.PERAWAT, P.RESEPSIONIS];
+const STATUS_ROLES = [P.SUPERADMIN, P.ADMIN_LOKAL, P.DOKTER, P.PERAWAT, P.RESEPSIONIS];
 
 const registerJadwalList = (path: string): void => {
   defineRoute(

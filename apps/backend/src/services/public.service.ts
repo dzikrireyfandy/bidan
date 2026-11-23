@@ -1,6 +1,8 @@
+import bcrypt from 'bcryptjs';
 import ApiError from '../errors/ApiError';
 import { paginate } from '../validation/common';
 import PublicRepository from '../repositories/public.repository';
+import AuthRepository from '../repositories/auth.repository';
 
 export interface ReservasiInput {
   pasien_id?: string;
@@ -14,6 +16,8 @@ export interface ReservasiInput {
   email?: string;
   jenis_kelamin?: 'P' | 'L';
   keluhan?: string;
+  username?: string;
+  password?: string;
 }
 
 export class PublicService {
@@ -60,6 +64,28 @@ export class PublicService {
 
     if (!pasienId) {
       throw ApiError.badRequest('pasien_id atau NIK pasien wajib diisi');
+    }
+
+    if (body.password && (body.username || body.nama) && body.email && body.nik) {
+      try {
+        const authRepo = new AuthRepository();
+        const uname = (body.username ?? body.nama ?? body.nik).trim();
+        const existingAkun = await authRepo.findAkunByUsername(uname);
+        if (!existingAkun) {
+          const hash = await bcrypt.hash(body.password, 10);
+          await authRepo.registerPasienAkun({
+            username: uname,
+            passwordHash: hash,
+            nik: body.nik.trim(),
+            nama: (body.nama ?? uname).trim(),
+            email: body.email.trim(),
+            noHp: body.no_hp?.trim(),
+            jenisKelamin: body.jenis_kelamin
+          });
+        }
+      } catch {
+        // Abaikan jika akun sudah ada, lanjutkan pembuatan tiket reservasi
+      }
     }
 
     const slot = await this.repository.findJadwalSlot(jadwalId);

@@ -14,7 +14,9 @@ import {
   klinisBayiSchema,
   klinisLimitSchema,
   kunjunganSchema,
-  persalinanSchema
+  persalinanSchema,
+  rmeListSchema,
+  rmeSimpanSchema
 } from '../../validation/klinis';
 import {
   createAnc,
@@ -28,7 +30,9 @@ import {
   listAnc,
   listImunisasi,
   listKb,
-  listKehamilan
+  listKehamilan,
+  listRme,
+  simpanRme
 } from '../../controllers/klinis.controller';
 
 const router = Router();
@@ -211,6 +215,36 @@ defineRoute(
   requireProfiles(...KLINIS),
   validate({ params: idParams, body: kbSchema }),
   createKb
+);
+
+defineRoute(
+  router,
+  {
+    method: 'post',
+    path: '/klinis/rme/simpan',
+    auth: true,
+    profiles: KLINIS,
+    schemas: { body: rmeSimpanSchema }
+  },
+  authenticate,
+  requireProfiles(...KLINIS),
+  validate({ body: rmeSimpanSchema }),
+  simpanRme
+);
+
+defineRoute(
+  router,
+  {
+    method: 'post',
+    path: '/klinis/rme/list',
+    auth: true,
+    profiles: KLINIS,
+    schemas: { body: rmeListSchema }
+  },
+  authenticate,
+  requireProfiles(...KLINIS),
+  validate({ body: rmeListSchema }),
+  listRme
 );
 
 export default router;

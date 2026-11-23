@@ -12,6 +12,9 @@ export interface AkunRow {
   peran: Peran;
   terkunci_sampai: Date | null;
   unit_id: string | null;
+  nik?: string | null;
+  email?: string | null;
+  nama_pasien?: string | null;
 }
 
 export interface OtpRow {
@@ -20,15 +23,20 @@ export interface OtpRow {
 }
 
 export class AuthRepository {
-  async findAkunByUsername(username: string): Promise<AkunRow | undefined> {
+  async findAkunByUsername(identifier: string): Promise<AkunRow | undefined> {
     const result = await db.query<AkunRow>(
       `SELECT a.akun_id, a.username, a.password_hash, a.aktif, a.pasien_id, a.staf_id, a.sub_peran,
-              a.terkunci_sampai, p.kode AS peran, s.unit_id
+              a.terkunci_sampai, p.kode AS peran, s.unit_id,
+              pas.nik, COALESCE(pas.email, s.email) AS email, pas.nama AS nama_pasien
          FROM [Akun_Pengguna] a
          JOIN [Peran] p ON p.peran_id = a.peran_id
          LEFT JOIN [Staf] s ON s.staf_id = a.staf_id
-        WHERE a.username = @username COLLATE Latin1_General_CS_AS`,
-      { username }
+         LEFT JOIN [Pasien] pas ON pas.pasien_id = a.pasien_id
+        WHERE a.username = @identifier COLLATE Latin1_General_CS_AS
+           OR pas.nik = @identifier
+           OR pas.email = @identifier
+           OR s.email = @identifier`,
+      { identifier }
     );
     return result.recordset[0];
   }
@@ -62,6 +70,92 @@ export class AuthRepository {
       { id: akunId },
       { akunId, userRef: username, keterangan: 'Login' }
     );
+    await this.recordAudit(akunId, username, 'LOGIN', 'Login');
+  }
+
+  async registerPasienAkun(input: {
+    username: string;
+    passwordHash: string;
+    nik: string;
+    nama: string;
+    email: string;
+    noHp?: string;
+    jenisKelamin?: string;
+  }): Promise<{ akun_id: string; pasien_id: string; username: string; peran: Peran }> {
+    let pasienRow = (
+      await db.query<{ pasien_id: string }>(
+        `SELECT pasien_id FROM [Pasien] WHERE nik = @nik`,
+        { nik: input.nik }
+      )
+    ).recordset[0];
+
+    let pasienId: string;
+    if (pasienRow) {
+      pasienId = pasienRow.pasien_id;
+      await db.query(
+        `UPDATE [Pasien] SET email = COALESCE(email, @email), no_telepon = COALESCE(no_telepon, @noHp) WHERE pasien_id = @id`,
+        { id: pasienId, email: input.email, noHp: input.noHp ?? '08123456789' }
+      );
+    } else {
+      const insertedPasien = await db.query<{ pasien_id: string }>(
+        `INSERT INTO [Pasien] (pasien_id, no_rm, nik, nama, jenis_kelamin, tgl_lahir, tempat_lahir, alamat, no_telepon, gol_darah, status_pernikahan, pekerjaan, email)
+         OUTPUT INSERTED.pasien_id
+         VALUES (NEWID(), RIGHT('000000' + CAST(NEXT VALUE FOR dbo.Seq_NoRM AS VARCHAR(10)), 6),
+                 @nik, @nama, @jk, '1995-01-01', N'Jambi', N'Kota Jambi', @noHp, 'O', 'MENIKAH', N'Ibu Rumah Tangga', @email)`,
+        {
+          nik: input.nik,
+          nama: input.nama,
+          jk: input.jenisKelamin === 'L' || input.jenisKelamin === 'LAKI_LAKI' ? 'L' : 'P',
+          noHp: input.noHp ?? '08123456789',
+          email: input.email
+        }
+      );
+      const pid = insertedPasien.recordset[0]?.pasien_id;
+      if (!pid) {
+        throw new Error('Gagal membuat data pasien');
+      }
+      pasienId = pid;
+    }
+
+    const peranRow = (
+      await db.query<{ peran_id: string }>(
+        `SELECT TOP 1 peran_id FROM [Peran] WHERE kode = 'PASIEN'`
+      )
+    ).recordset[0];
+
+    const peranId = peranRow?.peran_id;
+    if (!peranId) {
+      throw new Error('Peran PASIEN tidak ditemukan di database');
+    }
+
+    const insertedAkun = await db.query<{ akun_id: string }>(
+      `INSERT INTO [Akun_Pengguna] (akun_id, peran_id, username, password_hash, aktif, percobaan_gagal, pasien_id)
+       OUTPUT INSERTED.akun_id
+       VALUES (NEWID(), @peranId, @username, @hash, 1, 0, @pasienId)`,
+      {
+        peranId,
+        username: input.username,
+        hash: input.passwordHash,
+        pasienId
+      }
+    );
+
+    const aid = insertedAkun.recordset[0]?.akun_id;
+    if (!aid) {
+      throw new Error('Gagal membuat akun pengguna');
+    }
+    const akunId = aid;
+
+    const pesanNotif = `Selamat ${input.nama}, akun portal pasien Bidan Ria berhasil dibuat. Gunakan username/NIK Anda untuk reservasi online.`;
+    await this.recordNotification(input.email, pesanNotif, 'TERKIRIM');
+    await this.recordAudit(akunId, input.username, 'INSERT', 'Registrasi akun pasien baru');
+
+    return {
+      akun_id: akunId,
+      pasien_id: pasienId,
+      username: input.username,
+      peran: 'PASIEN'
+    };
   }
 
   async recordAudit(akunId: string, userRef: string, aksi: string, keterangan: string): Promise<void> {

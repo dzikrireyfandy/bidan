@@ -8,12 +8,14 @@ import {
   emailSchema,
   emptyBodySchema,
   loginSchema,
+  registerPasienSchema,
   resetVerifySchema
 } from '../../validation/auth';
 import {
   login,
   logout,
   refresh,
+  registerPasien,
   requestReset,
   verifyReset
 } from '../../controllers/auth.controller';
@@ -25,6 +27,13 @@ defineRoute(
   { method: 'post', path: '/auth/login', auth: false, profiles: [], schemas: { body: loginSchema } },
   validate({ body: loginSchema }),
   login
+);
+
+defineRoute(
+  router,
+  { method: 'post', path: '/auth/register-pasien', auth: false, profiles: [], schemas: { body: registerPasienSchema } },
+  validate({ body: registerPasienSchema }),
+  registerPasien
 );
 
 defineRoute(

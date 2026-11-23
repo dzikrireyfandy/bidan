@@ -54,7 +54,7 @@ export const paginate = (value: unknown, fallback: number, max: number): number 
   return Math.min(Math.trunc(parsed), max);
 };
 
-export const periodRange = (value: { dari?: string; sampai?: string }): void => {
+export const periodRange = (value: { dari?: string | null; sampai?: string | null }): void => {
   if (value.dari && value.sampai && value.dari > value.sampai) {
     throw ApiError.validation('Validasi periode gagal', [
       { path: ['dari'], message: 'Tanggal awal tidak boleh lebih besar dari tanggal akhir' }

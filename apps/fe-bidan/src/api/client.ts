@@ -72,9 +72,11 @@ apiClient.interceptors.request.use(async (config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    const requestUrl = error.config?.url || '';
+    const isAuthEndpoint = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register');
+    if (error.response && error.response.status === 401 && !isAuthEndpoint) {
       session.bersihkan();
-      if (window.location.pathname.startsWith('/app') || window.location.pathname === '/login') {
+      if (window.location.pathname.startsWith('/app')) {
         window.location.href = '/login';
       }
     }

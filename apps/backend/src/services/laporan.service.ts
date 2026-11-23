@@ -91,7 +91,7 @@ export class LaporanService {
   }
 
   listAudit(body: PeriodeInput): Promise<Record<string, unknown>[]> {
-    return this.repository.listAudit(paginate(body.limit, 100, 200), periodeOf(body));
+    return this.repository.listAudit(paginate(body.limit, 10000, 50000), periodeOf(body));
   }
 }
 

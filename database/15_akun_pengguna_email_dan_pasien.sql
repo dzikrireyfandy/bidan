@@ -50,7 +50,9 @@ IF NOT EXISTS (SELECT 1 FROM dbo.[Peran] WHERE kode = 'ADMIN_LOKAL')
     INSERT INTO dbo.[Peran] (peran_id, kode, nama) VALUES (NEWID(), 'ADMIN_LOKAL', 'Admin Lokal');
 
 IF NOT EXISTS (SELECT 1 FROM dbo.[Peran] WHERE kode = 'DOKTER')
-    INSERT INTO dbo.[Peran] (peran_id, kode, nama) VALUES (NEWID(), 'DOKTER', 'Dokter / Bidan');
+    INSERT INTO dbo.[Peran] (peran_id, kode, nama) VALUES (NEWID(), 'DOKTER', 'Bidan Praktik Mandiri');
+ELSE
+    UPDATE dbo.[Peran] SET nama = 'Bidan Praktik Mandiri' WHERE kode = 'DOKTER';
 
 IF NOT EXISTS (SELECT 1 FROM dbo.[Peran] WHERE kode = 'STAFF')
     INSERT INTO dbo.[Peran] (peran_id, kode, nama) VALUES (NEWID(), 'STAFF', 'Staf');

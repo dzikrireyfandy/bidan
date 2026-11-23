@@ -4,7 +4,7 @@ import { dateSchema } from './common';
 export const periodeSchema = z.object({
   dari: dateSchema.optional(),
   sampai: dateSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional()
+  limit: z.coerce.number().int().min(1).max(50000).optional()
 });
 
 export const kontenSchema = z.object({

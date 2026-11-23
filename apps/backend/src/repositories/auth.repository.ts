@@ -15,6 +15,7 @@ export interface AkunRow {
   nik?: string | null;
   email?: string | null;
   nama_pasien?: string | null;
+  nama_staf?: string | null;
 }
 
 export interface OtpRow {
@@ -27,13 +28,15 @@ export class AuthRepository {
     const result = await db.query<AkunRow>(
       `SELECT a.akun_id, a.username, a.password_hash, a.aktif, a.pasien_id, a.staf_id, a.sub_peran,
               a.terkunci_sampai, p.kode AS peran, s.unit_id,
-              pas.nik, COALESCE(pas.email, s.email) AS email, pas.nama AS nama_pasien
+              pas.nik, COALESCE(a.email, pas.email, s.email) AS email,
+              pas.nama AS nama_pasien, s.nama AS nama_staf
          FROM [Akun_Pengguna] a
          JOIN [Peran] p ON p.peran_id = a.peran_id
          LEFT JOIN [Staf] s ON s.staf_id = a.staf_id
          LEFT JOIN [Pasien] pas ON pas.pasien_id = a.pasien_id
         WHERE a.username = @identifier COLLATE Latin1_General_CS_AS
            OR pas.nik = @identifier
+           OR a.email = @identifier
            OR pas.email = @identifier
            OR s.email = @identifier`,
       { identifier }
@@ -46,7 +49,7 @@ export class AuthRepository {
       `SELECT a.akun_id FROM [Akun_Pengguna] a
          LEFT JOIN [Pasien] p ON p.pasien_id = a.pasien_id
          LEFT JOIN [Staf] s ON s.staf_id = a.staf_id
-        WHERE p.email = @email OR s.email = @email`,
+        WHERE a.email = @email OR p.email = @email OR s.email = @email`,
       { email }
     );
     return result.recordset[0]?.akun_id ?? null;
@@ -129,12 +132,13 @@ export class AuthRepository {
     }
 
     const insertedAkun = await db.query<{ akun_id: string }>(
-      `INSERT INTO [Akun_Pengguna] (akun_id, peran_id, username, password_hash, aktif, percobaan_gagal, pasien_id)
+      `INSERT INTO [Akun_Pengguna] (akun_id, peran_id, username, email, password_hash, aktif, percobaan_gagal, pasien_id)
        OUTPUT INSERTED.akun_id
-       VALUES (NEWID(), @peranId, @username, @hash, 1, 0, @pasienId)`,
+       VALUES (NEWID(), @peranId, @username, @email, @hash, 1, 0, @pasienId)`,
       {
         peranId,
         username: input.username,
+        email: input.email,
         hash: input.passwordHash,
         pasienId
       }

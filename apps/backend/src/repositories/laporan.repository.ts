@@ -175,6 +175,13 @@ export class LaporanRepository {
     return result.recordset[0];
   }
 
+  async totalPengguna(): Promise<number> {
+    const result = await db.query<{ total: number }>(
+      `SELECT COUNT(*) AS total FROM [Akun_Pengguna] WHERE aktif = 1`
+    );
+    return result.recordset[0]?.total ?? 5;
+  }
+
   async listAudit(limit: number, periode: Periode): Promise<Record<string, unknown>[]> {
     const result = await db.query<Record<string, unknown>>(
       `SELECT TOP (@limit) log_id, akun_id,

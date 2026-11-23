@@ -126,12 +126,12 @@ UPDATE dbo.Rumah_Sakit SET direktur_staf_id = @staf_super WHERE rumah_sakit_id =
 -- ===== Akun demo (password: "password") =====
 IF NOT EXISTS (SELECT 1 FROM dbo.Akun_Pengguna)
 INSERT INTO dbo.Akun_Pengguna (akun_id, staf_id, peran_id, username, password_hash, aktif, percobaan_gagal, sub_peran) VALUES
- (NEWID(), @staf_super,       @peran_super,  'superadmin',   '$2b$10$XAXUweq/JLtVd89O8cqfl.mMMxUqf7vwm.rNob7GyQBne9rC3HFG.', 1, 0, NULL),
- (NEWID(), @staf_admin,       @peran_admin,  'admin',        '$2b$10$XAXUweq/JLtVd89O8cqfl.mMMxUqf7vwm.rNob7GyQBne9rC3HFG.', 1, 0, NULL),
- (NEWID(), @staf_dokter,      @peran_dokter, 'dokter',       '$2b$10$XAXUweq/JLtVd89O8cqfl.mMMxUqf7vwm.rNob7GyQBne9rC3HFG.', 1, 0, NULL),
- (NEWID(), @staf_bidan,       @peran_dokter, 'bidan',        '$2b$10$XAXUweq/JLtVd89O8cqfl.mMMxUqf7vwm.rNob7GyQBne9rC3HFG.', 1, 0, NULL),
- (NEWID(), @staf_perawat,     @peran_staff,  'perawat',      '$2b$10$XAXUweq/JLtVd89O8cqfl.mMMxUqf7vwm.rNob7GyQBne9rC3HFG.', 1, 0, 'PERAWAT'),
- (NEWID(), @staf_resepsionis, @peran_staff,  'resepsionis',  '$2b$10$XAXUweq/JLtVd89O8cqfl.mMMxUqf7vwm.rNob7GyQBne9rC3HFG.', 1, 0, 'RESEPSIONIS');
+ (NEWID(), @staf_super,       @peran_super,  'superadmin',   '$2b$10$mS3UyJqS2cChIr.tdu4tTu1kDYz9PGc6ur9REIJb4qqwNF2XBTluy', 1, 0, NULL),
+ (NEWID(), @staf_admin,       @peran_admin,  'admin',        '$2b$10$mS3UyJqS2cChIr.tdu4tTu1kDYz9PGc6ur9REIJb4qqwNF2XBTluy', 1, 0, NULL),
+ (NEWID(), @staf_dokter,      @peran_dokter, 'dokter',       '$2b$10$mS3UyJqS2cChIr.tdu4tTu1kDYz9PGc6ur9REIJb4qqwNF2XBTluy', 1, 0, NULL),
+ (NEWID(), @staf_bidan,       @peran_dokter, 'bidan',        '$2b$10$mS3UyJqS2cChIr.tdu4tTu1kDYz9PGc6ur9REIJb4qqwNF2XBTluy', 1, 0, NULL),
+ (NEWID(), @staf_perawat,     @peran_staff,  'perawat',      '$2b$10$mS3UyJqS2cChIr.tdu4tTu1kDYz9PGc6ur9REIJb4qqwNF2XBTluy', 1, 0, 'PERAWAT'),
+ (NEWID(), @staf_resepsionis, @peran_staff,  'resepsionis',  '$2b$10$mS3UyJqS2cChIr.tdu4tTu1kDYz9PGc6ur9REIJb4qqwNF2XBTluy', 1, 0, 'RESEPSIONIS');
 
 -- ===== Penjamin =====
 IF NOT EXISTS (SELECT 1 FROM dbo.Penjamin)

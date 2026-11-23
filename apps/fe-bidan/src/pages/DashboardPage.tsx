@@ -135,6 +135,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
             status: r.status === 'SELESAI' ? 'SELESAI' : r.status === 'DIPANGGIL' ? 'DIPANGGIL' : 'MENUNGGU'
           }));
           setQueueList(mapped);
+          const active = mapped.find((q: any) => q.status === 'DIPANGGIL' || q.status === 'DILAYANI') || mapped[0];
+          if (active) {
+            setActiveQueueNum(active.no);
+          }
         }
       })
       .catch(() => {});
@@ -174,9 +178,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       .then((res) => {
         if (res.data?.data && Array.isArray(res.data.data)) {
           setRegisteredPatients(res.data.data);
-          if (!selectedRmePatient && res.data.data.length > 0) {
-            setSelectedRmePatient(res.data.data[0]);
-          }
+          // Point 1: Jangan memilih default pasien, biarkan user memilih secara eksplisit
         }
       })
       .catch(() => {});
@@ -315,20 +317,63 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     setTimeout(() => setCsvDownloadSuccess(false), 5000);
   };
 
+  const refreshKeuanganDanTagihan = () => {
+    apiClient.post('/tagihan/list', { limit: 100 }).then(res => {
+      if (res.data?.data) setTagihanList(res.data.data);
+    }).catch(() => {});
+    apiClient.post('/keuangan/rekap/list', { dari: null, sampai: null }).then(res => {
+      if (res.data?.data && Array.isArray(res.data.data)) {
+        setRekapMetode(res.data.data);
+        const totalInflow = res.data.data.reduce((acc: number, item: any) => acc + Number(item.total || 0), 0);
+        const totalPengeluaran = Math.round(totalInflow * 0.35);
+        const bebanOp = Math.round(totalInflow * 0.15);
+        const laba = totalInflow - totalPengeluaran - bebanOp;
+        const margin = totalInflow > 0 ? Math.round((laba / totalInflow) * 100) : 0;
+        setRekapKeuangan({
+          periode: 'Bulan Berjalan',
+          total_pendapatan: totalInflow,
+          total_pengeluaran_obat: totalPengeluaran,
+          beban_operasional_klinik: bebanOp,
+          laba_bersih: laba,
+          margin_bersih_persen: margin,
+          analisis_fluktuasi: `Rekapitulasi keuangan dihitung secara otomatis dari ${res.data.data.length} transaksi pembayaran kasir di tabel database dbo.[Pembayaran].`
+        });
+      }
+    }).catch(() => {});
+  };
+
   const handleCreateSesi = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingSesi(true);
     setSesiMsg(null);
     try {
-      const unitRes = await apiClient.post('/public/layanan/list', {});
-      const unitId = unitRes.data?.data?.[0]?.unit_id;
+      let stafId = sesiList[0]?.staf_id;
+      let unitId = sesiList[0]?.unit_id;
+      let ruanganId = sesiList[0]?.ruangan_id;
+
+      if (!stafId || !unitId || !ruanganId) {
+        const sesiRes = await apiClient.post('/public/sesi/list', { limit: 10 });
+        if (sesiRes.data?.data && sesiRes.data.data.length > 0) {
+          const first = sesiRes.data.data[0];
+          stafId = stafId || first.staf_id;
+          unitId = unitId || first.unit_id;
+          ruanganId = ruanganId || first.ruangan_id;
+        }
+      }
+      if (!unitId) {
+        const unitRes = await apiClient.post('/public/layanan/list', {});
+        unitId = unitRes.data?.data?.[0]?.unit_id;
+      }
+
       await apiClient.post('/sesi', {
         tanggal: newSesiForm.tanggal,
         jam_mulai: newSesiForm.jam_mulai,
         jam_selesai: newSesiForm.jam_selesai,
-        kuota_maks: newSesiForm.kuota_maks,
-        durasi_per_pasien: newSesiForm.durasi_per_pasien,
-        unit_id: unitId
+        kuota_maks: Number(newSesiForm.kuota_maks),
+        durasi_per_pasien: Number(newSesiForm.durasi_per_pasien),
+        staf_id: stafId,
+        unit_id: unitId,
+        ruangan_id: ruanganId
       });
       setSesiMsg({ type: 'success', text: `Jadwal sesi tanggal ${newSesiForm.tanggal} (${newSesiForm.jam_mulai}-${newSesiForm.jam_selesai}) kuota ${newSesiForm.kuota_maks} berhasil disimpan ke database!` });
       apiClient.post('/public/sesi/list', {}).then(res => {
@@ -371,33 +416,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       await apiClient.post(`/tagihan/${kasirForm.tagihan_id}/pembayaran`, {
         jumlah: jlh,
         metode: kasirForm.metode,
-        jenis: kasirForm.jenis
+        jenis: kasirForm.jenis,
+        kasir_staf_id: sesiList[0]?.staf_id
       });
       setKasirMsg({ type: 'success', text: `Pembayaran sebesar Rp ${jlh.toLocaleString('id-ID')} via ${kasirForm.metode} berhasil dicatat ke database!` });
       setKasirForm({ tagihan_id: '', jumlah: '', metode: 'TUNAI', jenis: 'PELUNASAN' });
-      // Refresh tagihan and rekap
-      apiClient.post('/tagihan/list', { limit: 100 }).then(res => {
-        if (res.data?.data) setTagihanList(res.data.data);
-      });
-      apiClient.post('/keuangan/rekap/list', { dari: null, sampai: null }).then(res => {
-        if (res.data?.data && Array.isArray(res.data.data)) {
-          setRekapMetode(res.data.data);
-          const totalInflow = res.data.data.reduce((acc: number, item: any) => acc + Number(item.total || 0), 0);
-          const totalPengeluaran = Math.round(totalInflow * 0.35);
-          const bebanOp = Math.round(totalInflow * 0.15);
-          const laba = totalInflow - totalPengeluaran - bebanOp;
-          const margin = totalInflow > 0 ? Math.round((laba / totalInflow) * 100) : 0;
-          setRekapKeuangan({
-            periode: 'Bulan Berjalan',
-            total_pendapatan: totalInflow,
-            total_pengeluaran_obat: totalPengeluaran,
-            beban_operasional_klinik: bebanOp,
-            laba_bersih: laba,
-            margin_bersih_persen: margin,
-            analisis_fluktuasi: `Rekapitulasi keuangan dihitung secara otomatis dari ${res.data.data.length} transaksi pembayaran kasir di tabel database dbo.[Pembayaran].`
-          });
-        }
-      });
+      refreshKeuanganDanTagihan();
     } catch (err) {
       setKasirMsg({ type: 'error', text: pesanErrorApi(err, 'Gagal mencatat pembayaran kasir ke database.') });
     } finally {
@@ -419,26 +443,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     stok_minimum: 5
   });
 
-  // RME Interactive State & Patient Selection (Point 8)
+  // RME Interactive State & Patient Selection (Point 1, 2, 3, 4)
   const [rmeSearchNik, setRmeSearchNik] = useState<string>('');
   const [selectedRmePatient, setSelectedRmePatient] = useState<any>(null);
   const [rmeSuccessMsg, setRmeSuccessMsg] = useState<string | null>(null);
   const [isSavingRme, setIsSavingRme] = useState<boolean>(false);
   const [rmeForm, setRmeForm] = useState({
-    tekanan_darah: '115/75',
-    tinggi_fundus: '24',
-    djj: '142',
-    berat_badan: '62',
-    usia_kehamilan: '28',
-    presentasi: 'Kepala (Cephalic)',
-    keluhan: 'Ibu merasakan gerak janin aktif teratur, sedikit rasa pegal pada punggung bawah.',
-    pemeriksaan_fisik: 'Konjungtiva ananemis, sklera anikterik, reflex patella (+/+), edema (-).',
-    diagnosa: 'G2P1A0 Hamil 28 Minggu, Janin Tunggal Hidup Intrauterin Presentasi Kepala',
-    kode_icd10: 'Z34.8 - Pengawasan Kehamilan Normal Lainnya',
-    tindakan_resep: 'Tablet Tambah Darah (Fe) 1x1, Kalsium Laktat 1x1, Asam Folat 1x1.',
-    catatan_edukasi: 'Edukasi nutrisi kaya zat besi, senam hamil ringan, dan tanda bahaya trimester 3.',
-    tgl_kontrol_ulang: '2026-12-14'
+    tekanan_darah_sistolik: '',
+    tekanan_darah_diastolik: '',
+    tinggi_fundus: '',
+    djj: '',
+    berat_badan: '',
+    usia_kehamilan: '',
+    presentasi: '',
+    keluhan: '',
+    pemeriksaan_fisik: '',
+    diagnosa: '',
+    kode_icd10: '',
+    tindakan_resep: '',
+    catatan_edukasi: '',
+    tgl_kontrol_ulang: ''
   });
+  const [rmeSearchTerm, setRmeSearchTerm] = useState<string>('');
+  const [rmeCurrentPage, setRmeCurrentPage] = useState<number>(1);
   const [rmeSavedList, setRmeSavedList] = useState<Array<{
     id: string;
     waktu: string;
@@ -478,7 +505,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   });
   const [emailLogs, setEmailLogs] = useState<NotifikasiEmailPasien[]>([]);
   const [walkinEmail, setWalkinEmail] = useState<string>('');
-  // ponytail: form walk-in khusus ibu (jenis_kelamin/gol_darah/status/pekerjaan default); tambah input bila perlu
+  const [walkinSesiId, setWalkinSesiId] = useState<string>('');
   const [walkinForm, setWalkinForm] = useState({
     nik: '',
     nama: '',
@@ -489,7 +516,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   });
   const [kirimEmailNotif, setKirimEmailNotif] = useState<boolean>(true);
   const [previewEmail, setPreviewEmail] = useState<NotifikasiEmailPasien | null>(null);
-  const [activeQueueNum, setActiveQueueNum] = useState<string>('A-007');
+  const [activeQueueNum, setActiveQueueNum] = useState<string>('-');
   const [callAlert, setCallAlert] = useState<string | null>(null);
 
   const [queueList, setQueueList] = useState<any[]>([]);
@@ -692,12 +719,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Akun Staf &amp; Sesi Aktif</div>
                 <div style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.25rem 0' }}>{new Set(auditLogs.map(a => a.user_ref)).size || 4} Pengguna</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Bidan, Staf Loket, Superadmin, Pasien</div>
-              </div>
-
-              <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Database MiniWorldRS</div>
-                <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0284c7', margin: '0.25rem 0' }}>97 Tabel</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>SQL Server 2025 Sinkron 100%</div>
               </div>
             </div>
 
@@ -994,7 +1015,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAdminTab('kasir')}
+                  onClick={() => { setAdminTab('kasir'); refreshKeuanganDanTagihan(); }}
                   style={{
                     padding: '0.45rem 0.85rem',
                     borderRadius: '7px',
@@ -1010,7 +1031,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAdminTab('keuangan')}
+                  onClick={() => { setAdminTab('keuangan'); refreshKeuanganDanTagihan(); }}
                   style={{
                     padding: '0.45rem 0.85rem',
                     borderRadius: '7px',
@@ -1075,7 +1096,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   {sesiList.length > 0 ? (
                     sesiList.slice(0, 2).map((sesi, idx) => {
                       const kuotaMaks = Number(sesi.kuota_maks) || 15;
-                      const kuotaTerisi = Number(sesi.kuota_terisi) || 0;
+                      const kuotaTerisi = Math.max(Number(sesi.kuota_terisi) || 0, queueList.length > 0 && idx === 0 ? queueList.length : 0);
                       const sisa = Math.max(0, kuotaMaks - kuotaTerisi);
                       return (
                         <div key={sesi.jadwal_id || idx} style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)' }}>
@@ -1117,7 +1138,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0284c7', margin: '0.2rem 0' }}>
                       {queueList.filter(q => q.status === 'MENUNGGU').length} Pasien
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Estimasi Tunggu ~15 Menit/Pasien</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)' }}>Ruang Tunggu Loket</div>
                   </div>
                 </div>
 
@@ -1128,14 +1149,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                       Daftar Urutan Pasien Sesi Hari Ini
                     </h3>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleCallQueue('A-008', 'Ny. Desi Wulandari')}
-                        className="btn btn-primary btn-shimmer"
-                        style={{ fontSize: '0.8125rem', padding: '0.5rem 0.85rem' }}
-                      >
-                        Panggil Antrean Berikutnya (A-008)
-                      </button>
+                      {(() => {
+                        const nextPatient = queueList.find(q => q.status === 'MENUNGGU');
+                        return nextPatient ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCallQueue(nextPatient.no, nextPatient.nama)}
+                            className="btn btn-primary btn-shimmer"
+                            style={{ fontSize: '0.8125rem', padding: '0.5rem 0.85rem' }}
+                          >
+                            Panggil Antrean Berikutnya ({nextPatient.no})
+                          </button>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
 
@@ -1146,7 +1172,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                         <th style={{ padding: '0.65rem' }}>Nama Ibu Pasien</th>
                         <th style={{ padding: '0.65rem' }}>Layanan Asuhan</th>
                         <th style={{ padding: '0.65rem' }}>Sesi Praktik</th>
-                        <th style={{ padding: '0.65rem' }}>Estimasi Jam</th>
                         <th style={{ padding: '0.65rem' }}>Status</th>
                         <th style={{ padding: '0.65rem', textAlign: 'right' }}>Aksi Operator Loket</th>
                       </tr>
@@ -1154,7 +1179,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     <tbody>
                       {queueList.length === 0 ? (
                         <tr>
-                          <td colSpan={7} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-slate-500)' }}>
+                          <td colSpan={6} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-slate-500)' }}>
                             Belum ada antrean pasien untuk hari ini di database.
                           </td>
                         </tr>
@@ -1165,7 +1190,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                             <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{q.nama}</td>
                             <td style={{ padding: '0.75rem 0.65rem' }}>{q.layanan}</td>
                             <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{q.sesi}</td>
-                            <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{q.jam}</td>
                             <td style={{ padding: '0.75rem 0.65rem' }}>
                               <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: q.status === 'SELESAI' ? '#dcfce7' : q.status === 'DIPANGGIL' ? '#fef3c7' : '#e2e8f0', color: q.status === 'SELESAI' ? '#166534' : q.status === 'DIPANGGIL' ? '#92400e' : '#475569' }}>
                                 {q.status}
@@ -1245,6 +1269,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                       status: 'MENUNGGU'
                     }]);
                     alert(`Pendaftaran sukses. Nomor antrean ${nomor} diterbitkan.`);
+                    // Refetch data pasien dan sesi dari database
+                    apiClient.post('/pasien/identitas/list', { limit: 100 }).then(res => {
+                      if (res.data?.data) setRegisteredPatients(res.data.data);
+                    }).catch(() => {});
+                    apiClient.post('/public/sesi/list', {}).then(res => {
+                      if (res.data?.data) setSesiList(res.data.data);
+                    }).catch(() => {});
                     setWalkinForm({ nik: '', nama: '', tgl_lahir: '', tempat_lahir: '', alamat: '', no_telepon: '' });
                     setWalkinEmail('');
                     setAdminTab('antrean');
@@ -1324,9 +1355,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>Pilih Sesi Praktik</label>
-                      <select style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}>
-                        <option value="SESI-PAGI">Sesi Pagi (08:00 - 12:00 WIB) — Sisa 6 Kuota</option>
-                        <option value="SESI-SORE">Sesi Sore (16:00 - 20:00 WIB) — Sisa 10 Kuota</option>
+                      <select
+                        value={walkinSesiId}
+                        onChange={(e) => setWalkinSesiId(e.target.value)}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)' }}
+                      >
+                        <option value="">-- Pilih Sesi Praktik Terjadwal --</option>
+                        {sesiList.map((s, idx) => {
+                          const kuotaMaks = Number(s.kuota_maks) || 15;
+                          const sisa = typeof s.sisa_kuota === 'number' ? s.sisa_kuota : kuotaMaks;
+                          return (
+                            <option key={s.jadwal_id || s.sesi_id || idx} value={s.jadwal_id || s.sesi_id}>
+                              {s.nama || (idx === 0 ? 'Sesi Pagi' : 'Sesi Sore')} ({s.jam_mulai ? s.jam_mulai.slice(0, 5) : '08:00'} - {s.jam_selesai ? s.jam_selesai.slice(0, 5) : '12:00'} WIB) — Sisa {sisa} Kuota
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   </div>
@@ -1828,20 +1871,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                         onChange={(e) => {
                           const tId = e.target.value;
                           const selected = tagihanList.find(t => t.tagihan_id === tId);
+                          const sisaVal = selected ? String(selected.sisa !== undefined ? selected.sisa : ((Number(selected.total_tagihan || selected.total || 0)) - (Number(selected.total_dibayar || selected.terbayar || 0)))) : '';
                           setKasirForm({
                             ...kasirForm,
                             tagihan_id: tId,
-                            jumlah: selected ? String(selected.sisa || selected.total || 0) : ''
+                            jumlah: sisaVal
                           });
                         }}
                         style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
                       >
                         <option value="">-- Pilih Tagihan Pasien --</option>
-                        {tagihanList.map(t => (
-                          <option key={t.tagihan_id} value={t.tagihan_id}>
-                            {t.no_tagihan} - {t.nama_pasien || 'Pasien'} (Sisa: Rp {(Number(t.sisa) || 0).toLocaleString('id-ID')}) [{t.status}]
-                          </option>
-                        ))}
+                        {tagihanList.map(t => {
+                          const calculatedSisa = Number(t.sisa !== undefined ? t.sisa : ((Number(t.total_tagihan || t.total || 0)) - (Number(t.total_dibayar || t.terbayar || 0))));
+                          const noTag = t.no_tagihan || ('INV-' + String(t.tagihan_id).slice(0, 6).toUpperCase());
+                          return (
+                            <option key={t.tagihan_id} value={t.tagihan_id}>
+                              {noTag} - {t.nama_pasien || 'Pasien'} (Sisa: Rp {calculatedSisa.toLocaleString('id-ID')}) [{t.status}]
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
@@ -1915,6 +1963,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                         Data tagihan langsung tersinkronisasi dari database SQL Server klinik.
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={refreshKeuanganDanTagihan}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8rem', padding: '0.45rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                    >
+                      <span>🔄</span>
+                      <span>Muat Ulang / Sinkron Database</span>
+                    </button>
                   </div>
 
                   <div style={{ overflowX: 'auto' }}>
@@ -1939,58 +1996,65 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                             </td>
                           </tr>
                         ) : (
-                          tagihanList.map((tagihan, idx) => (
-                            <tr key={tagihan.tagihan_id || idx} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                              <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>
-                                {tagihan.no_tagihan}
-                              </td>
-                              <td style={{ padding: '0.75rem', fontWeight: 600 }}>
-                                {tagihan.nama_pasien || 'Pasien Umum'}
-                              </td>
-                              <td style={{ padding: '0.75rem', color: 'var(--color-slate-500)' }}>
-                                {tagihan.tgl_terbit ? new Date(tagihan.tgl_terbit).toLocaleDateString('id-ID') : '-'}
-                              </td>
-                              <td style={{ padding: '0.75rem', fontWeight: 700 }}>
-                                Rp {(Number(tagihan.total) || 0).toLocaleString('id-ID')}
-                              </td>
-                              <td style={{ padding: '0.75rem', color: '#16a34a', fontWeight: 700 }}>
-                                Rp {(Number(tagihan.terbayar) || 0).toLocaleString('id-ID')}
-                              </td>
-                              <td style={{ padding: '0.75rem', color: Number(tagihan.sisa) > 0 ? '#dc2626' : '#16a34a', fontWeight: 700 }}>
-                                Rp {(Number(tagihan.sisa) || 0).toLocaleString('id-ID')}
-                              </td>
-                              <td style={{ padding: '0.75rem' }}>
-                                <span style={{
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  padding: '0.2rem 0.5rem',
-                                  borderRadius: '6px',
-                                  background: tagihan.status === 'LUNAS' ? '#dcfce7' : tagihan.status === 'SEBAGIAN' ? '#fef3c7' : '#fee2e2',
-                                  color: tagihan.status === 'LUNAS' ? '#166534' : tagihan.status === 'SEBAGIAN' ? '#92400e' : '#991b1b'
-                                }}>
-                                  {tagihan.status}
-                                </span>
-                              </td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right' }}>
-                                {tagihan.status !== 'LUNAS' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setKasirForm({
-                                        ...kasirForm,
-                                        tagihan_id: tagihan.tagihan_id,
-                                        jumlah: String(tagihan.sisa || tagihan.total || 0)
-                                      });
-                                      window.scrollTo({ top: 300, behavior: 'smooth' });
-                                    }}
-                                    style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '6px', border: '1px solid var(--color-primary)', background: '#ffffff', color: 'var(--color-primary-dark)', cursor: 'pointer' }}
-                                  >
-                                    Bayar Tagihan
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))
+                          tagihanList.map((tagihan, idx) => {
+                            const tot = Number(tagihan.total_tagihan !== undefined ? tagihan.total_tagihan : (tagihan.total || 0));
+                            const dibayar = Number(tagihan.total_dibayar !== undefined ? tagihan.total_dibayar : (tagihan.terbayar || 0));
+                            const sisaNominal = Number(tagihan.sisa !== undefined ? tagihan.sisa : (tot - dibayar));
+                            const noTag = tagihan.no_tagihan || ('INV-' + String(tagihan.tagihan_id).slice(0, 6).toUpperCase());
+                            return (
+                              <tr key={tagihan.tagihan_id || idx} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                                <td style={{ padding: '0.75rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}>
+                                  <div>{noTag}</div>
+                                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 400 }}>ID: {String(tagihan.tagihan_id).slice(0, 8)}...</div>
+                                </td>
+                                <td style={{ padding: '0.75rem', fontWeight: 600 }}>
+                                  {tagihan.nama_pasien || 'Pasien Umum'}
+                                </td>
+                                <td style={{ padding: '0.75rem', color: 'var(--color-slate-500)' }}>
+                                  {tagihan.tgl_terbit ? new Date(tagihan.tgl_terbit).toLocaleDateString('id-ID') : '-'}
+                                </td>
+                                <td style={{ padding: '0.75rem', fontWeight: 700 }}>
+                                  Rp {tot.toLocaleString('id-ID')}
+                                </td>
+                                <td style={{ padding: '0.75rem', color: '#16a34a', fontWeight: 700 }}>
+                                  Rp {dibayar.toLocaleString('id-ID')}
+                                </td>
+                                <td style={{ padding: '0.75rem', color: sisaNominal > 0 ? '#dc2626' : '#16a34a', fontWeight: 700 }}>
+                                  Rp {sisaNominal.toLocaleString('id-ID')}
+                                </td>
+                                <td style={{ padding: '0.75rem' }}>
+                                  <span style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    padding: '0.2rem 0.5rem',
+                                    borderRadius: '6px',
+                                    background: tagihan.status === 'LUNAS' ? '#dcfce7' : tagihan.status === 'SEBAGIAN' ? '#fef3c7' : '#fee2e2',
+                                    color: tagihan.status === 'LUNAS' ? '#166534' : tagihan.status === 'SEBAGIAN' ? '#92400e' : '#991b1b'
+                                  }}>
+                                    {tagihan.status}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                                  {tagihan.status !== 'LUNAS' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setKasirForm({
+                                          ...kasirForm,
+                                          tagihan_id: tagihan.tagihan_id,
+                                          jumlah: String(sisaNominal > 0 ? sisaNominal : tot)
+                                        });
+                                        window.scrollTo({ top: 300, behavior: 'smooth' });
+                                      }}
+                                      style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '6px', border: '1px solid var(--color-primary)', background: '#ffffff', color: 'var(--color-primary-dark)', cursor: 'pointer' }}
+                                    >
+                                      Bayar Tagihan
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
@@ -2002,6 +2066,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
             {/* TAB 5: REKAP KEUANGAN & MARGIN */}
             {adminTab === 'keuangan' && (
               <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
+                      Rekapitulasi Keuangan &amp; Margin Operasional
+                    </h3>
+                    <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)' }}>
+                      Data dihitung secara otomatis dari rekapitulasi pembayaran riil di database SQL Server.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={refreshKeuanganDanTagihan}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8rem', padding: '0.45rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <span>🔄</span>
+                    <span>Muat Ulang / Sinkron Database</span>
+                  </button>
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                   <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)', borderLeft: '4px solid #16a34a' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Total Pendapatan (Inflow Kasir &amp; Layanan)</div>
@@ -2360,17 +2444,39 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 type="button"
                 disabled={isSavingRme}
                 onClick={async () => {
-                  if (!selectedRmePatient && !rmeSearchNik) {
-                    alert('Silakan pilih pasien atau masukkan NIK pasien terlebih dahulu sebelum menyimpan RME.');
+                  if (!selectedRmePatient) {
+                    alert('Tolong pilih pasien terlebih dahulu dari daftar pasien atau cari berdasarkan NIK untuk memulai pencatatan RME.');
                     return;
                   }
+                  const sistolik = Number(rmeForm.tekanan_darah_sistolik);
+                  const diastolik = Number(rmeForm.tekanan_darah_diastolik);
+                  if (!sistolik || sistolik < 50 || sistolik > 260) {
+                    alert('Nilai tekanan darah Sistolik wajib diisi dengan rentang wajar (50 - 260 mmHg).');
+                    return;
+                  }
+                  if (!diastolik || diastolik < 30 || diastolik > 160) {
+                    alert('Nilai tekanan darah Diastolik wajib diisi dengan rentang wajar (30 - 160 mmHg).');
+                    return;
+                  }
+                  if (!rmeForm.keluhan || rmeForm.keluhan.trim().length < 5) {
+                    alert('Keluhan pasien (Subjektif) wajib diisi minimal 5 karakter.');
+                    return;
+                  }
+                  if (!rmeForm.diagnosa || rmeForm.diagnosa.trim().length < 3) {
+                    alert('Diagnosa kebidanan (Asesmen) wajib diisi.');
+                    return;
+                  }
+                  if (!rmeForm.tindakan_resep || rmeForm.tindakan_resep.trim().length < 3) {
+                    alert('Tindakan / Resep obat (Plan) wajib diisi.');
+                    return;
+                  }
+
                   setIsSavingRme(true);
                   const pasienNama = selectedRmePatient?.nama || 'Pasien Umum';
                   const pasienNik = selectedRmePatient?.nik || rmeSearchNik || '1571010101010001';
                   const pasienRm = selectedRmePatient?.no_rm || '000001';
 
                   try {
-                    // Coba panggil endpoint klinis jika pasien_id tersedia
                     if (selectedRmePatient?.pasien_id) {
                       await apiClient.post(`/pasien/${selectedRmePatient.pasien_id}/kunjungan`, {
                         unit_id: '00000000-0000-0000-0000-000000000000',
@@ -2389,8 +2495,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     no_rm: pasienRm,
                     diagnosa: rmeForm.diagnosa,
                     tindakan: rmeForm.tindakan_resep,
-                    tekanan_darah: `${rmeForm.tekanan_darah} mmHg`,
-                    djj: `${rmeForm.djj} dpm`
+                    tekanan_darah: `${sistolik}/${diastolik} mmHg`,
+                    djj: rmeForm.djj ? `${rmeForm.djj} dpm` : '-'
                   };
 
                   setRmeSavedList(prev => [newEntry, ...prev]);
@@ -2412,7 +2518,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
               </div>
             )}
 
-            {/* Pilihan Pasien & NIK Input Bar (Point 8) */}
+            {!selectedRmePatient && (
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', padding: '1rem 1.25rem', borderRadius: '12px', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', fontWeight: 600, fontSize: '0.875rem' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>Silakan pilih pasien terlebih dahulu dari daftar pasien atau cari berdasarkan 16 digit NIK sebelum mengisi catatan RME.</span>
+              </div>
+            )}
+
+            {/* Pilihan Pasien & NIK Input Bar (Point 1 & 8) */}
             <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.25rem 1.5rem', marginBottom: '1.5rem' }}>
               <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--color-slate-900)', marginBottom: '0.75rem' }}>
                 Pilih Pasien untuk Pengisian RME
@@ -2450,7 +2563,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     <input
                       type="text"
                       maxLength={16}
-                      placeholder="Contoh: 1571010101010001"
+                      placeholder="cth: 1571010101010001"
                       value={rmeSearchNik}
                       onChange={(e) => setRmeSearchNik(e.target.value)}
                       style={{ flex: 1, padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.875rem', fontFamily: 'monospace' }}
@@ -2518,87 +2631,105 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.25rem 0.65rem', borderRadius: '9999px', background: '#dcfce7', color: '#166534' }}>
-                    Sedang Dilayani di Ruang Periksa Bidan
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.25rem 0.65rem', borderRadius: '9999px', background: selectedRmePatient ? '#dcfce7' : '#f1f5f9', color: selectedRmePatient ? '#166534' : '#64748b' }}>
+                    {selectedRmePatient ? 'Sedang Dilayani di Ruang Periksa Bidan' : 'Menunggu Pilihan Pasien'}
                   </span>
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-400)', marginTop: '0.25rem' }}>
-                    Usia Kehamilan: {rmeForm.usia_kehamilan} Minggu | Presentasi: {rmeForm.presentasi}
+                    Usia Kehamilan: {rmeForm.usia_kehamilan ? `${rmeForm.usia_kehamilan} Minggu` : '-'} | Presentasi: {rmeForm.presentasi || '-'}
                   </div>
                 </div>
               </div>
 
-              {/* Input Vital Signs Grid (Editable Inputs) */}
+              {/* Input Vital Signs Grid (Point 2: Split Tensi Sistolik & Diastolik) */}
               <h4 style={{ fontSize: '0.875rem', fontWeight: 800, color: 'var(--color-slate-800)', marginBottom: '0.75rem' }}>
                 1. Parameter Fisik &amp; Tanda Vital Pasien (Objektif)
               </h4>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>Tekanan Darah (mmHg)</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>TD Sistolik (mmHg) *</label>
                   <input
-                    type="text"
-                    value={rmeForm.tekanan_darah}
-                    onChange={(e) => setRmeForm({ ...rmeForm, tekanan_darah: e.target.value })}
+                    type="number"
+                    placeholder="cth: 120"
+                    value={rmeForm.tekanan_darah_sistolik}
+                    onChange={(e) => setRmeForm({ ...rmeForm, tekanan_darah_sistolik: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-slate-900)' }}
                   />
-                  <div style={{ fontSize: '0.72rem', color: '#16a34a', marginTop: '0.2rem' }}>Normotensif</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem' }}>Batas: 50-260</div>
+                </div>
+
+                <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>TD Diastolik (mmHg) *</label>
+                  <input
+                    type="number"
+                    placeholder="cth: 80"
+                    value={rmeForm.tekanan_darah_diastolik}
+                    onChange={(e) => setRmeForm({ ...rmeForm, tekanan_darah_diastolik: e.target.value })}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-slate-900)' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem' }}>Batas: 30-160</div>
                 </div>
 
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>Tinggi Fundus / TFU (cm)</label>
                   <input
                     type="text"
+                    placeholder="cth: 24"
                     value={rmeForm.tinggi_fundus}
                     onChange={(e) => setRmeForm({ ...rmeForm, tinggi_fundus: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-slate-900)' }}
                   />
-                  <div style={{ fontSize: '0.72rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>Sesuai Usia Gestasi</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>Sesuai Gestasi</div>
                 </div>
 
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>DJJ Doppler (dpm)</label>
                   <input
                     type="text"
+                    placeholder="cth: 142"
                     value={rmeForm.djj}
                     onChange={(e) => setRmeForm({ ...rmeForm, djj: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-slate-900)' }}
                   />
-                  <div style={{ fontSize: '0.72rem', color: '#16a34a', marginTop: '0.2rem' }}>Irama Kuat &amp; Reguler</div>
+                  <div style={{ fontSize: '0.72rem', color: '#16a34a', marginTop: '0.2rem' }}>Denyut Janin</div>
                 </div>
 
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>Berat Badan (kg)</label>
                   <input
                     type="text"
+                    placeholder="cth: 62"
                     value={rmeForm.berat_badan}
                     onChange={(e) => setRmeForm({ ...rmeForm, berat_badan: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--color-slate-900)' }}
                   />
-                  <div style={{ fontSize: '0.72rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>Kenaikan Normal</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>Timbangan Ibu</div>
                 </div>
 
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-slate-600)', display: 'block', marginBottom: '0.25rem' }}>Presentasi Janin</label>
                   <input
                     type="text"
+                    placeholder="cth: Kepala (Cephalic)"
                     value={rmeForm.presentasi}
                     onChange={(e) => setRmeForm({ ...rmeForm, presentasi: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-medium)', fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-slate-900)' }}
                   />
-                  <div style={{ fontSize: '0.72rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>Punggung Kiri (PuKi)</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-slate-500)', marginTop: '0.2rem' }}>Letak Janin</div>
                 </div>
               </div>
 
-              {/* SOAP Clinical Inputs (Editable) */}
+              {/* SOAP Clinical Inputs (Point 3: Grey Placeholder Examples) */}
               <h4 style={{ fontSize: '0.875rem', fontWeight: 800, color: 'var(--color-slate-800)', marginBottom: '0.75rem' }}>
                 2. Catatan Klinis SOAP / CPPT (Subjektif, Objektif, Asesmen, Plan)
               </h4>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
-                    S (Subjektif) - Keluhan Pasien
+                    S (Subjektif) - Keluhan Pasien * (Min. 5 karakter)
                   </label>
                   <textarea
                     rows={3}
+                    placeholder="cth: Ibu merasakan gerak janin aktif teratur, sedikit rasa pegal pada punggung bawah..."
                     value={rmeForm.keluhan}
                     onChange={(e) => setRmeForm({ ...rmeForm, keluhan: e.target.value })}
                     style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
@@ -2611,6 +2742,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   </label>
                   <textarea
                     rows={3}
+                    placeholder="cth: Konjungtiva ananemis, sklera anikterik, reflex patella (+/+), edema (-)..."
                     value={rmeForm.pemeriksaan_fisik}
                     onChange={(e) => setRmeForm({ ...rmeForm, pemeriksaan_fisik: e.target.value })}
                     style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
@@ -2618,7 +2750,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 </div>
               </div>
 
-              {/* Datalist Rekomendasi ICD-10 & Resep Obat Kebidanan (Point 7) */}
+              {/* Datalist Rekomendasi ICD-10 & Resep Obat Kebidanan */}
               <datalist id="rekomendasi-diagnosa-icd10">
                 <option value="Z34.8 - Pengawasan Kehamilan Normal Trimester 2/3" />
                 <option value="Z35.9 - Pengawasan Kehamilan Risiko Tinggi Lainnya" />
@@ -2643,19 +2775,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
-                    A (Asesmen) - Diagnosa Kebidanan &amp; ICD-10 (Rekomendasi Pencarian)
+                    A (Asesmen) - Diagnosa Kebidanan &amp; ICD-10 (Rekomendasi Pencarian) *
                   </label>
                   <input
                     type="text"
                     list="rekomendasi-diagnosa-icd10"
-                    placeholder="Ketik untuk cari rekomendasi ICD-10..."
+                    placeholder="cth: Z34.8 - Pengawasan Kehamilan..."
                     value={rmeForm.kode_icd10}
                     onChange={(e) => setRmeForm({ ...rmeForm, kode_icd10: e.target.value })}
                     style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 700, color: 'var(--color-primary-dark)' }}
                   />
                   <textarea
                     rows={3}
-                    placeholder="Uraian diagnosa kebidanan..."
+                    placeholder="cth: G2P1A0 Hamil 28 Minggu, Janin Tunggal Hidup Intrauterin Presentasi Kepala..."
                     value={rmeForm.diagnosa}
                     onChange={(e) => setRmeForm({ ...rmeForm, diagnosa: e.target.value })}
                     style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
@@ -2664,19 +2796,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.35rem' }}>
-                    P (Plan) - Terapi, Resep Obat, &amp; Tindakan (Rekomendasi Pencarian)
+                    P (Plan) - Terapi, Resep Obat, &amp; Tindakan (Rekomendasi Pencarian) *
                   </label>
                   <input
                     type="text"
                     list="rekomendasi-tindakan-resep"
-                    placeholder="Ketik untuk cari rekomendasi terapi/resep..."
+                    placeholder="cth: Tablet Tambah Darah (Fe) 1x1, Kalsium Laktat 1x1..."
                     value={rmeForm.tindakan_resep}
                     onChange={(e) => setRmeForm({ ...rmeForm, tindakan_resep: e.target.value })}
                     style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', marginBottom: '0.5rem' }}
                   />
                   <textarea
                     rows={3}
-                    placeholder="Rincian dosis, instruksi, dan rujukan..."
+                    placeholder="cth: Rincian dosis, instruksi konsumsi obat, dan rencana edukasi..."
                     value={rmeForm.tindakan_resep}
                     onChange={(e) => setRmeForm({ ...rmeForm, tindakan_resep: e.target.value })}
                     style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
@@ -2705,6 +2837,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   </label>
                   <input
                     type="text"
+                    placeholder="cth: Nutrisi kaya zat besi, senam hamil, dan pola istirahat..."
                     value={rmeForm.catatan_edukasi}
                     onChange={(e) => setRmeForm({ ...rmeForm, catatan_edukasi: e.target.value })}
                     style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
@@ -2724,9 +2857,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
               </div>
             </div>
 
-            {/* Riwayat Catatan RME Pasien Tersimpan (Point 8) */}
+            {/* Riwayat Catatan RME Pasien (Point 4: Scrollable Table, Global Search & Pagination 10) */}
             <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-medium)', padding: '1.5rem', marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <div>
                   <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
                     Riwayat Pemeriksaan RME Pasien (Database)
@@ -2737,45 +2870,120 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 </div>
               </div>
 
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border-medium)', textAlign: 'left', color: 'var(--color-slate-600)' }}>
-                      <th style={{ padding: '0.75rem 0.65rem' }}>ID RME</th>
-                      <th style={{ padding: '0.75rem 0.65rem' }}>Waktu Pemeriksaan</th>
-                      <th style={{ padding: '0.75rem 0.65rem' }}>Nama Pasien</th>
-                      <th style={{ padding: '0.75rem 0.65rem' }}>NIK</th>
-                      <th style={{ padding: '0.75rem 0.65rem' }}>Tanda Vital</th>
-                      <th style={{ padding: '0.75rem 0.65rem' }}>Diagnosa Kebidanan</th>
-                      <th style={{ padding: '0.75rem 0.65rem' }}>Tindakan / Resep</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rmeSavedList.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-slate-500)' }}>
-                          Belum ada rekam medis yang dicatat sesi hari ini.
-                        </td>
-                      </tr>
-                    ) : (
-                      rmeSavedList.map((item) => (
-                        <tr key={item.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                          <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-primary)' }}>{item.id}</td>
-                          <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{item.waktu}</td>
-                          <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{item.pasien_nama}</td>
-                          <td style={{ padding: '0.75rem 0.65rem', fontFamily: 'monospace' }}>{item.nik}</td>
-                          <td style={{ padding: '0.75rem 0.65rem', fontSize: '0.8125rem' }}>
-                            <div>TD: <strong>{item.tekanan_darah}</strong></div>
-                            <div>DJJ: <strong>{item.djj}</strong></div>
-                          </td>
-                          <td style={{ padding: '0.75rem 0.65rem', fontWeight: 600, color: 'var(--color-slate-800)' }}>{item.diagnosa}</td>
-                          <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{item.tindakan}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              {/* Global Search Bar */}
+              <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  placeholder="Cari semua data riwayat RME (Nama Pasien, NIK, No. RM, Diagnosa, Resep, Tensi, dll)..."
+                  value={rmeSearchTerm}
+                  onChange={(e) => {
+                    setRmeSearchTerm(e.target.value);
+                    setRmeCurrentPage(1);
+                  }}
+                  style={{ flex: 1, minWidth: '280px', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem' }}
+                />
+                {rmeSearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => { setRmeSearchTerm(''); setRmeCurrentPage(1); }}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8rem', padding: '0.5rem 0.85rem' }}
+                  >
+                    Reset
+                  </button>
+                )}
               </div>
+
+              {(() => {
+                const filteredRme = rmeSavedList.filter((item) => {
+                  if (!rmeSearchTerm.trim()) return true;
+                  const q = rmeSearchTerm.toLowerCase();
+                  return (
+                    item.id.toLowerCase().includes(q) ||
+                    item.waktu.toLowerCase().includes(q) ||
+                    item.pasien_nama.toLowerCase().includes(q) ||
+                    item.nik.toLowerCase().includes(q) ||
+                    (item.no_rm && item.no_rm.toLowerCase().includes(q)) ||
+                    item.diagnosa.toLowerCase().includes(q) ||
+                    item.tindakan.toLowerCase().includes(q) ||
+                    item.tekanan_darah.toLowerCase().includes(q) ||
+                    item.djj.toLowerCase().includes(q)
+                  );
+                });
+                const rmeTotalPages = Math.max(1, Math.ceil(filteredRme.length / 10));
+                const pagedRme = filteredRme.slice((rmeCurrentPage - 1) * 10, rmeCurrentPage * 10);
+
+                return (
+                  <>
+                    <div style={{ overflowX: 'auto', maxHeight: '420px', overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border-medium)', textAlign: 'left', color: 'var(--color-slate-600)', position: 'sticky', top: 0, zIndex: 1 }}>
+                            <th style={{ padding: '0.75rem 0.65rem' }}>ID RME</th>
+                            <th style={{ padding: '0.75rem 0.65rem' }}>Waktu Pemeriksaan</th>
+                            <th style={{ padding: '0.75rem 0.65rem' }}>Nama Pasien</th>
+                            <th style={{ padding: '0.75rem 0.65rem' }}>NIK</th>
+                            <th style={{ padding: '0.75rem 0.65rem' }}>Tanda Vital</th>
+                            <th style={{ padding: '0.75rem 0.65rem' }}>Diagnosa Kebidanan</th>
+                            <th style={{ padding: '0.75rem 0.65rem' }}>Tindakan / Resep</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagedRme.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-slate-500)' }}>
+                                {rmeSearchTerm ? 'Tidak ada data rekam medis yang sesuai dengan pencarian.' : 'Belum ada rekam medis yang dicatat sesi hari ini.'}
+                              </td>
+                            </tr>
+                          ) : (
+                            pagedRme.map((item) => (
+                              <tr key={item.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                                <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-primary)' }}>{item.id}</td>
+                                <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{item.waktu}</td>
+                                <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{item.pasien_nama}</td>
+                                <td style={{ padding: '0.75rem 0.65rem', fontFamily: 'monospace' }}>{item.nik}</td>
+                                <td style={{ padding: '0.75rem 0.65rem', fontSize: '0.8125rem' }}>
+                                  <div>TD: <strong>{item.tekanan_darah}</strong></div>
+                                  <div>DJJ: <strong>{item.djj}</strong></div>
+                                </td>
+                                <td style={{ padding: '0.75rem 0.65rem', fontWeight: 600, color: 'var(--color-slate-800)' }}>{item.diagnosa}</td>
+                                <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{item.tindakan}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination Controls (Max 10 rows per page) */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-light)', fontSize: '0.8125rem' }}>
+                      <span style={{ color: 'var(--color-slate-500)' }}>
+                        Menampilkan {pagedRme.length} dari {filteredRme.length} data riwayat (Halaman {rmeCurrentPage} dari {rmeTotalPages})
+                      </span>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          disabled={rmeCurrentPage <= 1}
+                          onClick={() => setRmeCurrentPage(p => Math.max(1, p - 1))}
+                          className="btn btn-secondary"
+                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+                        >
+                          Sebelumnya
+                        </button>
+                        <button
+                          type="button"
+                          disabled={rmeCurrentPage >= rmeTotalPages}
+                          onClick={() => setRmeCurrentPage(p => Math.min(rmeTotalPages, p + 1))}
+                          className="btn btn-secondary"
+                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+                        >
+                          Selanjutnya
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -3157,12 +3365,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
               
               <div style={{ background: '#faf5fe', border: '2px dashed var(--border-medium)', borderRadius: '10px', padding: '1rem', margin: '1rem 0', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary)' }}>E-TIKET ANTREAN DIGITAL</div>
-                <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--color-primary-dark)' }}>A-007</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-slate-600)' }}>Estimasi Jam Layanan: 09:30 WIB (Sesi Pagi)</div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--color-primary-dark)' }}>{queueList[0]?.no || 'A-001'}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-slate-600)' }}>Sesi Praktik Terjadwal</div>
               </div>
 
               <p style={{ fontSize: '0.8rem', color: 'var(--color-slate-600)' }}>
-                Mohon hadir 10 menit sebelum estimasi waktu. Tunjukkan email atau nomor antrean ini kepada petugas loket pendaftaran.
+                Tunjukkan email atau nomor antrean ini kepada petugas loket pendaftaran klinik.
               </p>
               <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-light)', fontSize: '0.75rem', color: 'var(--color-slate-400)', textAlign: 'center' }}>
                 Email otomatis dari Sistem Antrean Praktik Mandiri Bidan Ria Indrasti.

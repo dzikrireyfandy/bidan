@@ -104,7 +104,7 @@ export const QueueStatusSection: React.FC<QueueStatusSectionProps> = ({ isLoadin
                           </div>
                         </div>
                         <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-slate-600)', background: '#ffffff', padding: '0.25rem 0.65rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                          Est. {a.waktu_estimasi}
+                          {a.status || 'MENUNGGU'}
                         </span>
                       </div>
                     ))}

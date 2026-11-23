@@ -40,7 +40,7 @@ export class KeuanganService {
   }
 
   async bayar(id: string, body: BayarBody, stafId: string | null): Promise<Record<string, unknown>> {
-    const kasir = this.pastikanStaf(stafId);
+    const kasir = this.pastikanStaf(stafId ?? body.kasir_staf_id ?? null);
     const tagihan = await this.repository.findTagihan(id);
     if (!tagihan) {
       throw ApiError.fromCode('ERR-FIN-02');

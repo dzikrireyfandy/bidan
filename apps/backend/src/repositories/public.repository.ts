@@ -38,6 +38,11 @@ export class PublicRepository {
   async listJadwal(limit: number, unitId: string | null): Promise<Record<string, unknown>[]> {
     const queryStr = `SELECT TOP (@limit) j.jadwal_id, j.staf_id, j.unit_id, j.ruangan_id, j.tanggal,
               j.jam_mulai, j.jam_selesai, j.kuota_maks, j.durasi_per_pasien,
+              ISNULL((
+                SELECT COUNT(*) FROM [Reservasi] r
+                 WHERE r.jadwal_id = j.jadwal_id
+                   AND r.status NOT IN ('BATAL', 'TIDAK_HADIR')
+              ), 0) AS kuota_terisi,
               CASE WHEN j.kuota_maks - ISNULL((
                      SELECT COUNT(*) FROM [Reservasi] r
                       WHERE r.jadwal_id = j.jadwal_id

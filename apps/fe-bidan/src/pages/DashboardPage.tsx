@@ -1069,15 +1069,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                   <div>
                     <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
-                      Log Riwayat Harga Jual Obat &amp; Fluktuasi HPP (Tabel dbo.[Harga_Obat])
+                      Log Riwayat Harga Jual Obat (Tabel dbo.[Harga_Obat])
                     </h3>
                     <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)' }}>
-                      Audit trail penyesuaian harga obat, margin keuntungan, dan dokumentasi alasan kenaikan bahan baku farmasi.
+                      Audit trail penyesuaian tarif obat beserta alasan perubahan yang tersimpan di database.
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setShowAddHargaModal(true)}
+                    onClick={() => { setHargaError(null); setShowAddHargaModal(true); }}
                     className="btn btn-primary btn-shimmer"
                     style={{ fontSize: '0.8125rem' }}
                   >

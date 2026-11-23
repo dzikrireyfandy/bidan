@@ -245,10 +245,35 @@ INSERT INTO dbo.Jenis_Diet (diet_id, kode, nama, keterangan) VALUES
 -- ===== Konten publik =====
 IF NOT EXISTS (SELECT 1 FROM dbo.Konten_Publik)
 INSERT INTO dbo.Konten_Publik (konten_id, tipe, judul, isi, media_url, urutan, terbit) VALUES
- (NEWID(), 'PROFIL', 'Praktik Mandiri Bidan & Klinik Umum',
-  'Melayani pemeriksaan kehamilan, persalinan, KB, imunisasi, tumbuh kembang anak, dan pemeriksaan dokter umum dalam satu pintu.',
+ (NEWID(), 'PROFIL', 'Praktik Mandiri Bidan & Pelayanan Umum',
+  'Melayani asuhan kehamilan, persalinan, KB, imunisasi, tumbuh kembang anak, dan konsultasi penyakit umum dalam satu pintu.',
   '', 1, 1),
- (NEWID(), 'KONTAK', 'Hubungi Kami', 'Jl. Kesehatan No. 1, Surakarta - 0271 123456', '', 2, 1);
+ (NEWID(), 'KONTAK', 'Hubungi Kami', 'Perumahan bougenvile blok FG 12b. Simpang Rimbo Kota Jambi', '', 2, 1);
+
+-- ===== Jadwal Praktik Sesi (Pagi & Sore) =====
+IF NOT EXISTS (SELECT 1 FROM dbo.Jadwal_Praktik WHERE tanggal >= CAST(SYSDATETIME() AS DATE))
+BEGIN
+  DECLARE @staf_bdn_jdwl UNIQUEIDENTIFIER = (SELECT TOP 1 staf_id FROM dbo.Staf WHERE nip = 'STF-BDN-01');
+  IF @staf_bdn_jdwl IS NULL SET @staf_bdn_jdwl = (SELECT TOP 1 staf_id FROM dbo.Staf WHERE aktif = 1);
+  DECLARE @unit_bdn_jdwl UNIQUEIDENTIFIER = (SELECT TOP 1 unit_id FROM dbo.Unit_Pelayanan WHERE kode = 'UNIT_BIDAN');
+  IF @unit_bdn_jdwl IS NULL SET @unit_bdn_jdwl = (SELECT TOP 1 unit_id FROM dbo.Unit_Pelayanan WHERE aktif = 1);
+  DECLARE @rg_kia_jdwl   UNIQUEIDENTIFIER = (SELECT TOP 1 ruangan_id FROM dbo.Ruangan WHERE kode = 'RG-KIA');
+  IF @rg_kia_jdwl IS NULL SET @rg_kia_jdwl = (SELECT TOP 1 ruangan_id FROM dbo.Ruangan WHERE aktif = 1);
+
+  IF @staf_bdn_jdwl IS NOT NULL AND @unit_bdn_jdwl IS NOT NULL AND @rg_kia_jdwl IS NOT NULL
+  BEGIN
+    DECLARE @jdwl_i INT = 0;
+    WHILE @jdwl_i < 14
+    BEGIN
+      DECLARE @tgl_sesi DATE = DATEADD(DAY, @jdwl_i, CAST(SYSDATETIME() AS DATE));
+      INSERT INTO dbo.Jadwal_Praktik (jadwal_id, staf_id, unit_id, ruangan_id, tanggal, jam_mulai, jam_selesai, kuota_maks, durasi_per_pasien, aktif)
+      VALUES (NEWID(), @staf_bdn_jdwl, @unit_bdn_jdwl, @rg_kia_jdwl, @tgl_sesi, '08:00:00', '12:00:00', 15, 20, 1);
+      INSERT INTO dbo.Jadwal_Praktik (jadwal_id, staf_id, unit_id, ruangan_id, tanggal, jam_mulai, jam_selesai, kuota_maks, durasi_per_pasien, aktif)
+      VALUES (NEWID(), @staf_bdn_jdwl, @unit_bdn_jdwl, @rg_kia_jdwl, @tgl_sesi, '16:00:00', '20:00:00', 15, 20, 1);
+      SET @jdwl_i = @jdwl_i + 1;
+    END
+  END
+END
 
 COMMIT;
 GO

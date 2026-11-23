@@ -12,6 +12,25 @@ export class KeuanganRepository {
     return result.recordset[0]?.penjamin_id ?? null;
   }
 
+  async findPenjaminBpjs(): Promise<string | null> {
+    const result = await db.query<{ penjamin_id: string }>(
+      `SELECT TOP 1 penjamin_id
+         FROM [Penjamin]
+        WHERE aktif = 1 AND (jenis = 'BPJS' OR nama LIKE '%BPJS%')
+        ORDER BY nama ASC`,
+      {}
+    );
+    return result.recordset[0]?.penjamin_id ?? null;
+  }
+
+  async findAnyPenjamin(): Promise<string | null> {
+    const result = await db.query<{ penjamin_id: string }>(
+      `SELECT TOP 1 penjamin_id FROM [Penjamin] WHERE aktif = 1 ORDER BY nama ASC`,
+      {}
+    );
+    return result.recordset[0]?.penjamin_id ?? null;
+  }
+
   async kunjunganExists(kunjunganId: string): Promise<boolean> {
     const result = await db.query<{ ada: number }>(
       `SELECT TOP 1 1 AS ada FROM [Kunjungan] WHERE kunjungan_id = @id`,

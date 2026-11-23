@@ -31,6 +31,7 @@ export const reservasiSchema = z.object({
   nama: z.string().optional(),
   no_hp: z.string().optional(),
   email: z.string().optional(),
+  jenis_kelamin: z.enum(['P', 'L']).optional(),
   keluhan: z.string().optional()
 });
 

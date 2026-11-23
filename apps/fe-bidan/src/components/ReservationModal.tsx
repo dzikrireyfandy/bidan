@@ -35,6 +35,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     nik: '',
     no_hp: '',
     email: '',
+    jenis_kelamin: 'P',
     tanggal: new Date().toISOString().split('T')[0] || '',
     sesi_id: '',
     layanan_id: selectedLayanan ? selectedLayanan.layanan_id : '',
@@ -109,6 +110,17 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     setIsSubmitting(true);
     setErrorMessage(null);
 
+    if (!formData.sesi_id || formData.sesi_id.trim() === '') {
+      setErrorMessage('Tolong pilih sesi jadwal terlebih dahulu.');
+      setIsSubmitting(false);
+      return;
+    }
+    if (!formData.layanan_id || formData.layanan_id.trim() === '') {
+      setErrorMessage('Tolong pilih jenis layanan pemeriksaan terlebih dahulu.');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       // 1. Cek apakah pasien sudah ada di database via NIK
       let existingPasienId: string | undefined = undefined;
@@ -136,6 +148,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
         nik: formData.nik,
         no_hp: formData.no_hp,
         email: formData.email,
+        jenis_kelamin: formData.jenis_kelamin,
         tanggal: formData.tanggal,
         keluhan: formData.keluhan
       });
@@ -221,22 +234,38 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.5rem' }}>
-                  Pilih Layanan Asuhan Kebidanan
+                  Pilih Layanan Asuhan Klinis &amp; Konsultasi (Pencarian Rekomendasi)
                 </label>
+                <input
+                  type="text"
+                  list="layanan-rekomendasi-datalist"
+                  placeholder="Ketik untuk mencari rekomendasi layanan..."
+                  value={layananList.find(l => l.layanan_id === formData.layanan_id)?.nama || ''}
+                  onChange={(e) => {
+                    const text = e.target.value;
+                    const found = layananList.find(l => l.nama.toLowerCase().includes(text.toLowerCase()));
+                    if (found) {
+                      setFormData(prev => ({ ...prev, layanan_id: found.layanan_id }));
+                    }
+                  }}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none', marginBottom: '0.5rem' }}
+                />
+                <datalist id="layanan-rekomendasi-datalist">
+                  {layananList.map((l) => (
+                    <option key={l.layanan_id} value={l.nama} />
+                  ))}
+                </datalist>
                 <select
                   value={formData.layanan_id}
                   onChange={(e) => setFormData({ ...formData, layanan_id: e.target.value })}
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
                 >
-                  {layananList.length === 0 ? (
-                    <option value="">Layanan Kebidanan Umum</option>
-                  ) : (
-                    layananList.map((l) => (
-                      <option key={l.layanan_id} value={l.layanan_id}>
-                        {l.nama} ({l.kategori})
-                      </option>
-                    ))
-                  )}
+                  <option value="">-- Pilih Layanan Kebidanan &amp; Umum --</option>
+                  {layananList.map((l) => (
+                    <option key={l.layanan_id} value={l.layanan_id}>
+                      {l.nama} ({l.kategori})
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -256,22 +285,19 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.5rem' }}>
-                    Pilihan Sesi Praktik
+                    Pilihan Sesi Praktik *
                   </label>
                   <select
                     value={formData.sesi_id}
                     onChange={(e) => setFormData({ ...formData, sesi_id: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
                   >
-                    {sesiList.length === 0 ? (
-                      <option value="">Sesi Terjadwal</option>
-                    ) : (
-                      sesiList.map((s) => (
-                        <option key={s.sesi_id} value={s.sesi_id}>
-                          {s.nama} ({s.jam_mulai} - {s.jam_selesai}) - Sisa {s.sisa_kuota} Kuota
-                        </option>
-                      ))
-                    )}
+                    <option value="">-- Tolong Pilih Sesi Jadwal --</option>
+                    {sesiList.map((s) => (
+                      <option key={s.sesi_id} value={s.sesi_id} disabled={s.sisa_kuota <= 0}>
+                        {s.nama} ({s.jam_mulai} - {s.jam_selesai}) - Sisa {s.sisa_kuota} Kuota {s.sisa_kuota <= 0 ? '(Penuh)' : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -283,7 +309,18 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
+                  onClick={() => {
+                    if (!formData.layanan_id) {
+                      setErrorMessage('Tolong pilih layanan asuhan klinis terlebih dahulu.');
+                      return;
+                    }
+                    if (!formData.sesi_id) {
+                      setErrorMessage('Tolong pilih sesi jadwal terlebih dahulu.');
+                      return;
+                    }
+                    setErrorMessage(null);
+                    setStep(2);
+                  }}
                   className="btn btn-primary btn-shimmer"
                 >
                   <span>Lanjutkan ke Data Diri</span>
@@ -344,6 +381,35 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                     onChange={(e) => setFormData({ ...formData, no_hp: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-medium)', fontSize: '0.9375rem', outline: 'none' }}
                   />
+                </div>
+              </div>
+
+              {/* Pilihan Jenis Kelamin (P / L) - Requirement 6 */}
+              <div style={{ marginBottom: '1rem', background: '#faf5fe', padding: '0.85rem 1rem', borderRadius: '10px', border: '1px solid #efe8f6' }}>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-slate-700)', marginBottom: '0.4rem' }}>
+                  Jenis Kelamin Pasien *
+                </label>
+                <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer', fontWeight: 600, color: 'var(--color-slate-800)' }}>
+                    <input
+                      type="radio"
+                      name="modal_jenis_kelamin"
+                      value="P"
+                      checked={formData.jenis_kelamin === 'P'}
+                      onChange={() => setFormData({ ...formData, jenis_kelamin: 'P' })}
+                    />
+                    <span>Perempuan (Ibu Hamil / Bersalin / Anak P)</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer', fontWeight: 600, color: 'var(--color-slate-800)' }}>
+                    <input
+                      type="radio"
+                      name="modal_jenis_kelamin"
+                      value="L"
+                      checked={formData.jenis_kelamin === 'L'}
+                      onChange={() => setFormData({ ...formData, jenis_kelamin: 'L' })}
+                    />
+                    <span>Laki-laki (Bayi / Pasien Anak L)</span>
+                  </label>
                 </div>
               </div>
 

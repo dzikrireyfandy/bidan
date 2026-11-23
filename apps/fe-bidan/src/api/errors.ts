@@ -18,8 +18,43 @@ const detailMessages = (details: unknown): string[] => {
 };
 
 /**
+ * Mengubah pesan error teknis menjadi bahasa manusia yang ramah bagi pengguna/pasien
+ */
+const translateTechnicalError = (msg: string): string => {
+  const lower = msg.toLowerCase();
+  if (lower.includes('jadwal_id') || lower.includes('sesi_id') || lower.includes('jadwal slot')) {
+    return 'Tolong pilih sesi jadwal terlebih dahulu.';
+  }
+  if (lower.includes('pasien_id') || (lower.includes('nik') && lower.includes('wajib'))) {
+    return 'Tolong masukkan NIK atau lengkapi data pasien terlebih dahulu.';
+  }
+  if (lower.includes('nik') && (lower.includes('16 digit') || lower.includes('regex') || lower.includes('invalid'))) {
+    return 'Nomor Induk Kependudukan (NIK) harus 16 digit angka.';
+  }
+  if (lower.includes('err-rsv-01') || lower.includes('kuota') || lower.includes('penuh')) {
+    return 'Kuota antrean untuk sesi jadwal ini sudah penuh. Silakan pilih sesi atau hari lain.';
+  }
+  if (lower.includes('jadwal tidak tersedia')) {
+    return 'Jadwal sesi praktik yang dipilih tidak tersedia atau sudah ditutup. Tolong pilih sesi jadwal lain.';
+  }
+  if (lower.includes('layanan_id')) {
+    return 'Tolong pilih jenis layanan pemeriksaan terlebih dahulu.';
+  }
+  if (lower.includes('err-fin-01')) {
+    return 'Jumlah pembayaran melebihi sisa tagihan.';
+  }
+  if (lower.includes('err-fin-02') || lower.includes('tagihan tidak ditemukan')) {
+    return 'Data tagihan pasien tidak ditemukan di database.';
+  }
+  if (lower.includes('staf_id') && lower.includes('tidak terhubung')) {
+    return 'Akun petugas tidak terhubung ke data staf aktif.';
+  }
+  return msg;
+};
+
+/**
  * Mengubah error Axios menjadi pesan yang siap ditampilkan.
- * Untuk HTTP 422, detail validasi per field ikut digabungkan.
+ * Untuk HTTP 422, detail validasi per field ikut digabungkan dan diterjemahkan.
  */
 export const pesanErrorApi = (
   err: unknown,
@@ -34,9 +69,18 @@ export const pesanErrorApi = (
   if (err.response.status === 422) {
     const detail = detailMessages(body?.error?.details);
     if (detail.length > 0) {
-      return `${pesan ?? 'Periksa kembali isian Anda'}: ${detail.join('; ')}`;
+      const joined = detail.join('; ');
+      const translated = translateTechnicalError(joined);
+      if (translated !== joined) {
+        return translated;
+      }
+      return `${pesan ?? 'Periksa kembali isian Anda'}: ${joined}`;
     }
   }
 
-  return pesan || fallback;
+  if (pesan) {
+    return translateTechnicalError(pesan);
+  }
+
+  return fallback;
 };

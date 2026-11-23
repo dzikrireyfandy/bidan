@@ -252,3 +252,11 @@ GO
 CREATE UNIQUE INDEX [UX_Pemeriksaan_Bayi_KN] ON dbo.[Pemeriksaan_Bayi] (bayi_id, jenis) WHERE jenis IN ('KN1','KN2','KN3');
 CREATE INDEX [IX_Pemeriksaan_Bayi_bayi_tgl] ON dbo.[Pemeriksaan_Bayi] (bayi_id, tgl_pemeriksaan);
 GO
+
+-- Dukungan metode pembayaran BPJS (sesuai arahan user & integrasi billing)
+IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_Pembayaran_metode')
+BEGIN
+    ALTER TABLE dbo.[Pembayaran] DROP CONSTRAINT [CK_Pembayaran_metode];
+    ALTER TABLE dbo.[Pembayaran] ADD CONSTRAINT [CK_Pembayaran_metode] CHECK (metode IN ('TUNAI','TRANSFER','QRIS','KARTU','BPJS'));
+END
+GO

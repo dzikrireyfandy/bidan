@@ -1156,7 +1156,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     color: adminTab === 'riwayat_harga' ? '#ffffff' : 'var(--color-slate-700)'
                   }}
                 >
-                  Riwayat Harga (Harga_Obat)
+                  Riwayat Harga
                 </button>
                 <button
                   type="button"
@@ -1628,7 +1628,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                   <div>
                     <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
-                      Inventori Obat &amp; Alkes Esensial Kebidanan (Tabel: Obat &amp; Mutasi_Stok)
+                      Inventori Obat &amp; Alkes Esensial Kebidanan
                     </h3>
                     <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)' }}>
                       Ambang batas pengaman stok medis untuk persalinan 24 jam dan pelayanan KB.
@@ -2344,7 +2344,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                   <div>
                     <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
-                      Log Riwayat Harga Jual Obat (Tabel dbo.[Harga_Obat])
+                      Log Riwayat Harga Jual Obat
                     </h3>
                     <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)' }}>
                       Audit trail penyesuaian tarif obat beserta alasan perubahan yang tersimpan di database.

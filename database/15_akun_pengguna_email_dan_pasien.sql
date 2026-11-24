@@ -54,7 +54,8 @@ END
 GO
 
 -- Jadikan staf_id nullable agar akun pasien dapat dibuat
-ALTER TABLE dbo.[Akun_Pengguna] ALTER COLUMN [staf_id] UNIQUEIDENTIFIER NULL;
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Akun_Pengguna') AND name = 'staf_id' AND is_nullable = 0)
+    ALTER TABLE dbo.[Akun_Pengguna] ALTER COLUMN [staf_id] UNIQUEIDENTIFIER NULL;
 GO
 
 -- Drop constraint unik kaku pada staf_id jika ada
@@ -168,16 +169,17 @@ BEGIN
     END
 END
 
--- Pastikan ada sampel pembayaran untuk metode TRANSFER dan BPJS sehingga rekapitulasi lengkap
+-- Pastikan ada sampel pembayaran untuk metode TRANSFER dan penjamin BPJS sehingga rekapitulasi lengkap
+-- CK_Pembayaran_metode hanya mengizinkan TUNAI/TRANSFER/KARTU/QRIS, jadi sampel BPJS memakai KARTU.
 IF @t1 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.[Pembayaran] WHERE metode = 'TRANSFER')
 BEGIN
     INSERT INTO dbo.[Pembayaran] (pembayaran_id, tagihan_id, penjamin_id, kasir_staf_id, jumlah, metode, jenis, waktu_bayar)
     VALUES (NEWID(), @t1, @penjamin_mandiri, @staf_kasir, 75000, 'TRANSFER', 'CICILAN', SYSDATETIME());
 END
 
-IF @t2 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.[Pembayaran] WHERE metode = 'BPJS')
+IF @t2 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.[Pembayaran] WHERE penjamin_id = @penjamin_bpjs)
 BEGIN
     INSERT INTO dbo.[Pembayaran] (pembayaran_id, tagihan_id, penjamin_id, kasir_staf_id, jumlah, metode, jenis, waktu_bayar)
-    VALUES (NEWID(), @t2, @penjamin_bpjs, @staf_kasir, 120000, 'BPJS', 'PELUNASAN', SYSDATETIME());
+    VALUES (NEWID(), @t2, @penjamin_bpjs, @staf_kasir, 120000, 'KARTU', 'PELUNASAN', SYSDATETIME());
 END
 GO

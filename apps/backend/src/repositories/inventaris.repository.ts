@@ -106,6 +106,33 @@ export class InventarisRepository {
     return result.recordset[0]?.batch_id ?? null;
   }
 
+  async findDefaultGudang(): Promise<string> {
+    const result = await db.query<{ gudang_id: string }>(
+      `SELECT TOP 1 gudang_id FROM [Gudang] ORDER BY (CASE WHEN jenis = 'UTAMA' THEN 1 ELSE 2 END)`
+    );
+    return result.recordset[0]?.gudang_id ?? '1B398758-84BE-E525-4785-7E975D50FEA7';
+  }
+
+  async findOrCreateBatch(obatId: string, noBatch?: string, kedaluwarsa?: string, harga?: number): Promise<string> {
+    const existing = await db.query<{ batch_id: string }>(
+      `SELECT TOP 1 batch_id FROM [Batch_Obat] WHERE obat_id = @obat_id ORDER BY batch_id DESC`,
+      { obat_id: obatId }
+    );
+    if (existing.recordset[0]?.batch_id) {
+      return existing.recordset[0].batch_id;
+    }
+    const defaultBatch = noBatch || `BATCH-${Date.now().toString().slice(-6)}`;
+    const defaultExp = kedaluwarsa || '2028-12-31';
+    const defaultHarga = harga ?? 0;
+    const inserted = await this.createBatch({
+      obatId,
+      noBatch: defaultBatch,
+      tglKedaluwarsa: defaultExp,
+      hargaBeli: defaultHarga
+    });
+    return inserted ?? '00000000-0000-0000-0000-000000000000';
+  }
+
   async addStok(batchId: string, gudangId: string, jumlah: number): Promise<void> {
     await db.query(
       `MERGE [Stok_Batch] AS target
@@ -113,6 +140,15 @@ export class InventarisRepository {
          ON target.batch_id = src.batch_id AND target.gudang_id = src.gudang_id
        WHEN MATCHED THEN UPDATE SET jumlah = target.jumlah + @jumlah
        WHEN NOT MATCHED THEN INSERT (batch_id, gudang_id, jumlah) VALUES (src.batch_id, src.gudang_id, @jumlah);`,
+      { batch_id: batchId, gudang_id: gudangId, jumlah }
+    );
+  }
+
+  async reduceStok(batchId: string, gudangId: string, jumlah: number): Promise<void> {
+    await db.query(
+      `UPDATE [Stok_Batch]
+          SET jumlah = CASE WHEN jumlah >= @jumlah THEN jumlah - @jumlah ELSE 0 END
+        WHERE batch_id = @batch_id AND gudang_id = @gudang_id;`,
       { batch_id: batchId, gudang_id: gudangId, jumlah }
     );
   }
@@ -134,6 +170,26 @@ export class InventarisRepository {
     await db.query(
       `INSERT INTO [Mutasi_Stok] (batch_id, gudang_id, staf_id, jenis, jumlah, waktu, keterangan)
        VALUES (@batch_id, @gudang_id, @staf_id, 'MASUK', @jumlah, SYSDATETIME(), @keterangan)`,
+      {
+        batch_id: input.batchId,
+        gudang_id: input.gudangId,
+        staf_id: input.stafId,
+        jumlah: input.jumlah,
+        keterangan: input.keterangan
+      }
+    );
+  }
+
+  async addMutasiKeluar(input: {
+    batchId: string;
+    gudangId: string;
+    stafId: string | null;
+    jumlah: number;
+    keterangan: string;
+  }): Promise<void> {
+    await db.query(
+      `INSERT INTO [Mutasi_Stok] (batch_id, gudang_id, staf_id, jenis, jumlah, waktu, keterangan)
+       VALUES (@batch_id, @gudang_id, @staf_id, 'KELUAR', @jumlah, SYSDATETIME(), @keterangan)`,
       {
         batch_id: input.batchId,
         gudang_id: input.gudangId,

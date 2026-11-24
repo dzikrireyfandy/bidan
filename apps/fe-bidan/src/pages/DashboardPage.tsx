@@ -151,10 +151,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
         if (res.data?.data && Array.isArray(res.data.data)) {
           const mapped = res.data.data.map((r: any, idx: number) => ({
             reservasi_id: String(r.reservasi_id || ''),
+            pasien_id: String(r.pasien_id || ''),
+            nik: String(r.nik_pasien || r.nik || ''),
+            tanggal: r.tanggal ? String(r.tanggal).split('T')[0] : '',
             no: r.nomor_antrean ? `A-${String(r.nomor_antrean).padStart(3, '0')}` : `A-${String(idx + 1).padStart(3, '0')}`,
             nama: r.nama_pasien || 'Ibu Pasien',
             layanan: 'Pelayanan Kebidanan',
-            sesi: 'Sesi Praktik',
+            sesi: r.tanggal ? `Praktik ${String(r.tanggal).split('T')[0]}` : 'Sesi Praktik',
             jam: r.estimasi_jam ? `${r.estimasi_jam} WIB` : '08:00 - 12:00 WIB',
             status: r.status === 'SELESAI' ? 'SELESAI' : r.status === 'DIPANGGIL' ? 'DIPANGGIL' : 'MENUNGGU'
           }));
@@ -192,6 +195,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       .then((res) => {
         if (res.data?.data && Array.isArray(res.data.data)) {
           const mapped = res.data.data.map((o: any) => ({
+            obat_id: o.obat_id,
             kode: o.kode || o.obat_id,
             nama: o.nama_dagang ? `${o.nama_dagang} (${o.nama_generik})` : (o.nama_generik || 'Obat Kebidanan'),
             kategori: o.kategori || 'Obat Esensial',
@@ -476,7 +480,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
 
   // Logistik & Alkes Input Modal State
   const [showAddAlkesModal, setShowAddAlkesModal] = useState<boolean>(false);
+  const [showMutasiStokModal, setShowMutasiStokModal] = useState<boolean>(false);
   const [alkesSaving, setAlkesSaving] = useState<boolean>(false);
+  const [mutasiSaving, setMutasiSaving] = useState<boolean>(false);
   const [alkesSuccessMsg, setAlkesSuccessMsg] = useState<string | null>(null);
   const [newAlkesItem, setNewAlkesItem] = useState({
     kode: '',
@@ -486,6 +492,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     satuan: 'pcs',
     stok_total: 20,
     stok_minimum: 5
+  });
+  const [mutasiForm, setMutasiForm] = useState({
+    obat_id: '',
+    jenis: 'MASUK' as 'MASUK' | 'KELUAR',
+    jumlah: 10,
+    no_batch: '',
+    keterangan: 'Penerimaan restock alkes/obat kebidanan'
   });
 
   // RME Interactive State & Patient Selection (Point 1, 2, 3, 4)
@@ -559,7 +572,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   const handleCallQueue = (nomor: string, nama: string, reservasi_id?: string) => {
     setActiveQueueNum(nomor);
     setCallAlert(`Memanggil nomor antrean: ${nomor} (${nama}) menuju Ruang Periksa 1.`);
-    setQueueList(prev => prev.map(q => q.no === nomor ? { ...q, status: 'DIPANGGIL' } : q));
+    setQueueList(prev => prev.map(q => ((reservasi_id && q.reservasi_id === reservasi_id) || q.no === nomor) ? { ...q, status: 'DIPANGGIL' } : q));
     if (reservasi_id) {
       apiClient.patch(`/reservasi/${reservasi_id}/status`, { status: 'DIPANGGIL' }).catch(() => {});
     }
@@ -567,7 +580,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   };
 
   const handleFinishQueue = (nomor: string, reservasi_id?: string) => {
-    setQueueList(prev => prev.map(q => q.no === nomor ? { ...q, status: 'SELESAI' } : q));
+    setQueueList(prev => prev.map(q => ((reservasi_id && q.reservasi_id === reservasi_id) || q.no === nomor) ? { ...q, status: 'SELESAI' } : q));
     if (reservasi_id) {
       apiClient.patch(`/reservasi/${reservasi_id}/status`, { status: 'SELESAI' }).catch(() => {});
     }
@@ -1004,7 +1017,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     MODUL OPERASIONAL LOKET PENDAFTARAN
                   </span>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#16a34a' }}>
-                    • Sesi Pagi &amp; Sore Terbuka
+                    • Sesi Praktik Terbuka
                   </span>
                 </div>
                 <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--color-slate-900)' }}>
@@ -1185,7 +1198,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                       return (
                         <div key={sesi.jadwal_id || idx} style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)' }}>
                           <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>
-                            Sesi {idx === 0 ? 'Pagi' : 'Sore'} ({sesi.jam_mulai ? sesi.jam_mulai.slice(0, 5) : '08:00'} - {sesi.jam_selesai ? sesi.jam_selesai.slice(0, 5) : '12:00'} WIB)
+                            Sesi {sesi.tanggal ? `${new Date(sesi.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} ` : ''}({sesi.jam_mulai ? sesi.jam_mulai.slice(0, 5) : '08:00'} - {sesi.jam_selesai ? sesi.jam_selesai.slice(0, 5) : '12:00'} WIB)
                           </div>
                           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>
                             {kuotaTerisi} Pasien Terdaftar
@@ -1199,12 +1212,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   ) : (
                     <>
                       <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)' }}>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Sesi Pagi (08:00 - 12:00 WIB)</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Sesi 08:00 - 12:00 WIB</div>
                         <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>{queueList.length} Pasien Terdaftar</div>
                         <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>Kuota Dinamis Terhubung DB</div>
                       </div>
                       <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid var(--border-medium)' }}>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Sesi Sore (16:00 - 20:00 WIB)</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Sesi 16:00 - 20:00 WIB</div>
                         <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.2rem 0' }}>Tersedia di DB</div>
                         <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>Admin Dapat Menyesuaikan Kuota</div>
                       </div>
@@ -1253,6 +1266,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     <thead>
                       <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--color-slate-600)' }}>
                         <th style={{ padding: '0.65rem' }}>No. Antrean</th>
+                        <th style={{ padding: '0.65rem' }}>Tanggal Antrean</th>
                         <th style={{ padding: '0.65rem' }}>Nama Ibu Pasien</th>
                         <th style={{ padding: '0.65rem' }}>Layanan Asuhan</th>
                         <th style={{ padding: '0.65rem' }}>Sesi Praktik</th>
@@ -1263,14 +1277,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     <tbody>
                       {queueList.length === 0 ? (
                         <tr>
-                          <td colSpan={6} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-slate-500)' }}>
+                          <td colSpan={7} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-slate-500)' }}>
                             Belum ada antrean pasien untuk hari ini di database.
                           </td>
                         </tr>
                       ) : (
-                        queueList.map((q) => (
-                          <tr key={q.no} style={{ borderBottom: '1px solid var(--border-light)', background: q.status === 'DIPANGGIL' ? '#faf5fe' : 'transparent' }}>
+                        queueList.map((q, idx) => (
+                          <tr key={q.reservasi_id || `${q.tanggal || 'today'}-${q.no}-${idx}`} style={{ borderBottom: '1px solid var(--border-light)', background: q.status === 'DIPANGGIL' ? '#faf5fe' : 'transparent' }}>
                             <td style={{ padding: '0.75rem 0.65rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>{q.no}</td>
+                            <td style={{ padding: '0.75rem 0.65rem', fontWeight: 600, color: 'var(--color-slate-700)' }}>
+                              {q.tanggal ? new Date(q.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'Hari Ini'}
+                            </td>
                             <td style={{ padding: '0.75rem 0.65rem', fontWeight: 700, color: 'var(--color-slate-900)' }}>{q.nama}</td>
                             <td style={{ padding: '0.75rem 0.65rem' }}>{q.layanan}</td>
                             <td style={{ padding: '0.75rem 0.65rem', color: 'var(--color-slate-600)' }}>{q.sesi}</td>
@@ -1458,7 +1475,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                           const sisa = typeof s.sisa_kuota === 'number' ? s.sisa_kuota : kuotaMaks;
                           return (
                             <option key={s.jadwal_id || s.sesi_id || idx} value={s.jadwal_id || s.sesi_id}>
-                              {s.nama || (idx === 0 ? 'Sesi Pagi' : 'Sesi Sore')} ({s.jam_mulai ? s.jam_mulai.slice(0, 5) : '08:00'} - {s.jam_selesai ? s.jam_selesai.slice(0, 5) : '12:00'} WIB) — Sisa {sisa} Kuota
+                              Sesi {s.tanggal ? `${String(s.tanggal).split('T')[0]} ` : ''}({s.jam_mulai ? s.jam_mulai.slice(0, 5) : '08:00'} - {s.jam_selesai ? s.jam_selesai.slice(0, 5) : '12:00'} WIB) — Sisa {sisa} Kuota
                             </option>
                           );
                         })}
@@ -1628,7 +1645,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowAddAlkesModal(true)}
+                      onClick={() => {
+                        setAlkesSuccessMsg(null);
+                        setShowMutasiStokModal(true);
+                        if (stokAlkes.length > 0 && !mutasiForm.obat_id) {
+                          setMutasiForm(prev => ({ ...prev, obat_id: stokAlkes[0].obat_id || stokAlkes[0].kode }));
+                        }
+                      }}
                       className="btn btn-secondary"
                       style={{ fontSize: '0.8125rem' }}
                     >
@@ -3140,17 +3163,56 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
             {(() => {
               const loggedInNama = (localStorage.getItem('bidan_user_nama') || localStorage.getItem('bidan_pasien_nama') || '').toLowerCase().trim();
               const loggedInUser = (localStorage.getItem('bidan_user_identifier') || '').toLowerCase().trim();
+              const loggedInPasienId = (localStorage.getItem('bidan_user_pasien_id') || '').trim();
+              const loggedInNik = (localStorage.getItem('bidan_user_nik') || '').trim();
 
-              const patientTicket = queueList.find(q => {
-                const qNama = (q.nama || '').toLowerCase();
-                return (loggedInNama && qNama.includes(loggedInNama)) || (loggedInUser && qNama.includes(loggedInUser));
+              let patientTicket = queueList.find(q => {
+                const qNama = (q.nama || '').toLowerCase().trim();
+                const qPasienId = (q.pasien_id || '').trim();
+                const qNik = (q.nik || '').trim();
+                return (
+                  (loggedInPasienId && qPasienId && qPasienId === loggedInPasienId) ||
+                  (loggedInNik && qNik && qNik === loggedInNik) ||
+                  (loggedInNama && (qNama.includes(loggedInNama) || loggedInNama.includes(qNama))) ||
+                  (loggedInUser && (qNama.includes(loggedInUser) || loggedInUser.includes(qNama)))
+                );
               });
+
+              if (!patientTicket) {
+                try {
+                  const lastTicketRaw = localStorage.getItem('bidan_last_ticket');
+                  if (lastTicketRaw) {
+                    const parsed = JSON.parse(lastTicketRaw);
+                    if (parsed && (parsed.nomorAntrean || parsed.no)) {
+                      patientTicket = {
+                        no: parsed.nomorAntrean || parsed.no,
+                        nama: parsed.nama || loggedInNama,
+                        layanan: parsed.layananNama || 'Pelayanan Kebidanan',
+                        jam: parsed.estimasiJam || parsed.jam || '08:00 - 12:00 WIB',
+                        tanggal: parsed.tanggal || '',
+                        status: 'MENUNGGU'
+                      };
+                    }
+                  }
+                } catch {
+                  // Fallback
+                }
+              }
 
               if (patientTicket) {
                 return (
                   <div style={{ background: 'linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%)', color: '#ffffff', borderRadius: '20px', padding: '1.75rem', marginBottom: '1.5rem', boxShadow: '0 10px 25px -5px rgba(88, 32, 126, 0.3)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.15)', paddingBottom: '0.75rem' }}>
-                      <span style={{ fontSize: '0.8125rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tiket Antrean Pemeriksaan Hari Ini</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.15)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Tiket Antrean Pemeriksaan Kebidanan
+                        </span>
+                        {patientTicket.tanggal && (
+                          <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fef3c7', marginTop: '0.2rem' }}>
+                            📅 Tanggal Antrean: {new Date(patientTicket.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                          </div>
+                        )}
+                      </div>
                       <span style={{ fontSize: '0.75rem', background: '#fef3c7', color: '#92400e', padding: '0.2rem 0.6rem', borderRadius: '9999px', fontWeight: 800 }}>
                         {patientTicket.status || 'MENUNGGU'}
                       </span>
@@ -3211,7 +3273,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 </div>
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px' }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Estimasi Sesi Berikutnya</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#16a34a', marginTop: '0.2rem' }}>Sesi Pagi (08:00 - 12:00 WIB)</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#16a34a', marginTop: '0.2rem' }}>08:00 - 12:00 WIB</div>
                 </div>
                 <div style={{ background: '#faf8fc', padding: '1rem', borderRadius: '10px' }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-slate-500)', fontWeight: 600 }}>Bidan Penanggung Jawab</div>
@@ -3232,10 +3294,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   if (res.data?.data && Array.isArray(res.data.data)) {
                     setQueueList(res.data.data.map((r: any, idx: number) => ({
                       reservasi_id: String(r.reservasi_id || ''),
+                      pasien_id: String(r.pasien_id || ''),
+                      nik: String(r.nik_pasien || r.nik || ''),
+                      tanggal: r.tanggal ? String(r.tanggal).split('T')[0] : '',
                       no: r.nomor_antrean ? `A-${String(r.nomor_antrean).padStart(3, '0')}` : `A-${String(idx + 1).padStart(3, '0')}`,
                       nama: r.nama_pasien || 'Ibu Pasien',
                       layanan: 'Pelayanan Kebidanan',
-                      sesi: 'Sesi Praktik',
+                      sesi: r.tanggal ? `Praktik ${String(r.tanggal).split('T')[0]}` : 'Sesi Praktik',
                       jam: r.estimasi_jam ? `${r.estimasi_jam} WIB` : '08:00 - 12:00 WIB',
                       status: r.status === 'SELESAI' ? 'SELESAI' : r.status === 'DIPANGGIL' ? 'DIPANGGIL' : 'MENUNGGU'
                     })));
@@ -3392,41 +3457,32 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 await apiClient.post('/inventaris', {
                   kode,
                   nama_generik: newAlkesItem.nama_generik,
+                  nama_dagang: newAlkesItem.nama_generik,
                   kategori: newAlkesItem.kategori,
                   bentuk: newAlkesItem.bentuk,
                   satuan: newAlkesItem.satuan,
-                  stok_minimum: Number(newAlkesItem.stok_minimum) || 5
+                  stok_minimum: Number(newAlkesItem.stok_minimum) || 5,
+                  stok_awal: Number(newAlkesItem.stok_total) || 0
                 });
-                setStokAlkes(prev => [
-                  {
-                    kode,
-                    nama: newAlkesItem.nama_generik,
-                    kategori: newAlkesItem.kategori,
-                    stok: Number(newAlkesItem.stok_total) || 20,
-                    min: Number(newAlkesItem.stok_minimum) || 5,
-                    satuan: newAlkesItem.satuan,
-                    status: (Number(newAlkesItem.stok_total) || 20) <= (Number(newAlkesItem.stok_minimum) || 5) ? 'MENIPIS' : 'AMAN'
-                  },
-                  ...prev
-                ]);
-                alert(`Alkes/Obat "${newAlkesItem.nama_generik}" berhasil ditambahkan ke inventaris database.`);
+                // Refetch langsung dari database riil
+                const refetch = await apiClient.post('/inventaris/list', {});
+                if (refetch.data?.data && Array.isArray(refetch.data.data)) {
+                  setStokAlkes(refetch.data.data.map((o: any) => ({
+                    obat_id: o.obat_id,
+                    kode: o.kode || o.obat_id,
+                    nama: o.nama_dagang ? `${o.nama_dagang} (${o.nama_generik})` : (o.nama_generik || 'Obat Kebidanan'),
+                    kategori: o.kategori || 'Obat Esensial',
+                    stok: Number(o.stok_total || 0),
+                    min: Number(o.stok_minimum || 10),
+                    satuan: o.satuan || 'Pcs',
+                    status: Number(o.stok_total || 0) <= Number(o.stok_minimum || 10) ? 'MENIPIS' : 'AMAN'
+                  })));
+                }
+                setAlkesSuccessMsg(`Alkes/Obat "${newAlkesItem.nama_generik}" berhasil ditambahkan dan tersimpan permanen ke database SQL Server.`);
                 setShowAddAlkesModal(false);
                 setNewAlkesItem({ kode: '', nama_generik: '', kategori: 'ALKES', bentuk: 'Pcs', satuan: 'pcs', stok_total: 20, stok_minimum: 5 });
-              } catch {
-                setStokAlkes(prev => [
-                  {
-                    kode,
-                    nama: newAlkesItem.nama_generik,
-                    kategori: newAlkesItem.kategori,
-                    stok: Number(newAlkesItem.stok_total) || 20,
-                    min: Number(newAlkesItem.stok_minimum) || 5,
-                    satuan: newAlkesItem.satuan,
-                    status: (Number(newAlkesItem.stok_total) || 20) <= (Number(newAlkesItem.stok_minimum) || 5) ? 'MENIPIS' : 'AMAN'
-                  },
-                  ...prev
-                ]);
-                alert(`Alkes/Obat "${newAlkesItem.nama_generik}" berhasil dicatat ke inventaris.`);
-                setShowAddAlkesModal(false);
+              } catch (err) {
+                alert(pesanErrorApi(err, 'Gagal menambahkan alkes/obat ke database.'));
               } finally {
                 setAlkesSaving(false);
               }
@@ -3519,6 +3575,159 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 </button>
                 <button type="submit" disabled={alkesSaving} className="btn btn-primary btn-shimmer">
                   {alkesSaving ? 'Menyimpan...' : 'Simpan Alkes / Obat'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Catat Mutasi Stok (Penerimaan / Pengurangan / Restock Real DB) */}
+      {showMutasiStokModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '520px', width: '100%', padding: '1.75rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-slate-900)', marginBottom: '0.35rem' }}>
+              Catat Mutasi Stok Obat &amp; Alkes
+            </h3>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--color-slate-500)', marginBottom: '1.25rem' }}>
+              Catat pergerakan penerimaan restock (stok masuk) atau pemakaian tindakan medis (stok keluar) langsung ke tabel [Mutasi_Stok] dan [Stok_Batch] database.
+            </p>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!mutasiForm.obat_id) {
+                alert('Tolong pilih obat/alkes terlebih dahulu.');
+                return;
+              }
+              setMutasiSaving(true);
+              try {
+                await apiClient.post(`/inventaris/${mutasiForm.obat_id}/restock`, {
+                  jumlah: Number(mutasiForm.jumlah),
+                  jenis: mutasiForm.jenis,
+                  no_batch: mutasiForm.no_batch || `MUT-${Date.now().toString().slice(-6)}`,
+                  keterangan: mutasiForm.keterangan || (mutasiForm.jenis === 'MASUK' ? 'Restock penerimaan barang' : 'Pemakaian tindakan klinis')
+                });
+
+                // Refetch langsung dari database riil
+                const refetch = await apiClient.post('/inventaris/list', {});
+                if (refetch.data?.data && Array.isArray(refetch.data.data)) {
+                  setStokAlkes(refetch.data.data.map((o: any) => ({
+                    obat_id: o.obat_id,
+                    kode: o.kode || o.obat_id,
+                    nama: o.nama_dagang ? `${o.nama_dagang} (${o.nama_generik})` : (o.nama_generik || 'Obat Kebidanan'),
+                    kategori: o.kategori || 'Obat Esensial',
+                    stok: Number(o.stok_total || 0),
+                    min: Number(o.stok_minimum || 10),
+                    satuan: o.satuan || 'Pcs',
+                    status: Number(o.stok_total || 0) <= Number(o.stok_minimum || 10) ? 'MENIPIS' : 'AMAN'
+                  })));
+                }
+
+                setAlkesSuccessMsg(`Mutasi stok (${mutasiForm.jenis === 'MASUK' ? 'Stok Masuk' : 'Stok Keluar'}: ${mutasiForm.jumlah} unit) berhasil dicatat permanen ke database SQL Server!`);
+                setShowMutasiStokModal(false);
+                setMutasiForm({
+                  obat_id: stokAlkes[0]?.obat_id || '',
+                  jenis: 'MASUK',
+                  jumlah: 10,
+                  no_batch: '',
+                  keterangan: 'Penerimaan restock alkes/obat kebidanan'
+                });
+              } catch (err) {
+                alert(pesanErrorApi(err, 'Gagal mencatat mutasi stok ke database.'));
+              } finally {
+                setMutasiSaving(false);
+              }
+            }}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                  Pilih Obat / Alkes dari Inventaris DB *
+                </label>
+                <select
+                  required
+                  value={mutasiForm.obat_id}
+                  onChange={(e) => setMutasiForm({ ...mutasiForm, obat_id: e.target.value })}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.875rem' }}
+                >
+                  <option value="">-- Pilih Item dari Database --</option>
+                  {stokAlkes.map((s) => (
+                    <option key={s.obat_id || s.kode} value={s.obat_id || s.kode}>
+                      {s.kode} - {s.nama} (Stok saat ini: {s.stok} {s.satuan})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                    Jenis Mutasi *
+                  </label>
+                  <select
+                    value={mutasiForm.jenis}
+                    onChange={(e) => setMutasiForm({ ...mutasiForm, jenis: e.target.value as 'MASUK' | 'KELUAR' })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.875rem' }}
+                  >
+                    <option value="MASUK">📥 Stok Masuk (Restock / Penerimaan)</option>
+                    <option value="KELUAR">📤 Stok Keluar (Pemakaian Tindakan)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                    Jumlah Unit *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={mutasiForm.jumlah}
+                    onChange={(e) => setMutasiForm({ ...mutasiForm, jumlah: Number(e.target.value) || 1 })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.875rem' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                  Nomor Batch / Lot (Opsional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Contoh: LOT-2026-B01"
+                  value={mutasiForm.no_batch}
+                  onChange={(e) => setMutasiForm({ ...mutasiForm, no_batch: e.target.value })}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.875rem' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                  Keterangan Alasan Mutasi *
+                </label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Contoh: Pengadaan persalinan dari distributor resmi, atau pemakaian untuk tindakan ANC."
+                  value={mutasiForm.keterangan}
+                  onChange={(e) => setMutasiForm({ ...mutasiForm, keterangan: e.target.value })}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.875rem' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowMutasiStokModal(false)}
+                  className="btn btn-secondary"
+                  disabled={mutasiSaving}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={mutasiSaving}
+                  className="btn btn-primary btn-shimmer"
+                >
+                  {mutasiSaving ? 'Mencatat ke DB...' : 'Simpan Mutasi Stok'}
                 </button>
               </div>
             </form>

@@ -15,7 +15,8 @@ export const obatSchema = z.object({
   satuan: z.string().min(1).max(20),
   kekuatan: z.string().max(30).optional(),
   golongan: z.string().max(30).optional(),
-  stok_minimum: z.number().int().min(0).default(0)
+  stok_minimum: z.number().int().min(0).default(0),
+  stok_awal: z.number().int().min(0).optional()
 });
 
 export const obatUpdateSchema = z.object({
@@ -25,11 +26,12 @@ export const obatUpdateSchema = z.object({
 });
 
 export const restockSchema = z.object({
-  gudang_id: z.string().uuid(),
-  no_batch: z.string().min(1).max(50),
-  tgl_kedaluwarsa: dateSchema,
-  harga_beli: z.number().min(0),
+  gudang_id: z.string().uuid().optional(),
+  no_batch: z.string().min(1).max(50).optional(),
+  tgl_kedaluwarsa: dateSchema.optional(),
+  harga_beli: z.number().min(0).default(0),
   jumlah: z.number().int().min(1),
+  jenis: z.enum(['MASUK', 'KELUAR']).optional(),
   keterangan: z.string().max(255).optional()
 });
 

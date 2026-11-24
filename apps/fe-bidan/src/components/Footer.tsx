@@ -77,7 +77,7 @@ export const Footer: React.FC = () => {
                 </svg>
                 <div>
                   <div style={{ color: '#ffffff', fontWeight: 600 }}>Sesi Konsultasi & ANC:</div>
-                  <div>Pagi: 08:00 - 12:00 | Sore: 16:00 - 20:00 WIB</div>
+                  <div>Sesi: 08:00 - 12:00 | 16:00 - 20:00 WIB</div>
                 </div>
               </li>
             </ul>

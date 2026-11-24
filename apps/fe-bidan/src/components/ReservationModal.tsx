@@ -108,11 +108,14 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
           const list: SesiPraktikItem[] = res.data.data.map((s: any, idx: number) => {
             const kuotaMaks = Number(s.kuota_maks || 15);
             const sisa = typeof s.sisa_kuota === 'number' ? s.sisa_kuota : kuotaMaks;
+            const jMulai = formatJam(s.jam_mulai || (idx === 0 ? '08:00' : '16:00'));
+            const jSelesai = formatJam(s.jam_selesai || (idx === 0 ? '12:00' : '20:00'));
+            const tglLabel = s.tanggal ? `${String(s.tanggal).split('T')[0]} ` : '';
             return {
               sesi_id: s.jadwal_id || s.sesi_id || `SESI-${idx}`,
-              nama: s.nama || (idx === 0 ? 'Sesi Pagi' : 'Sesi Sore'),
-              jam_mulai: formatJam(s.jam_mulai || (idx === 0 ? '08:00' : '16:00')),
-              jam_selesai: formatJam(s.jam_selesai || (idx === 0 ? '12:00' : '20:00')),
+              nama: `Sesi ${tglLabel}(${jMulai} - ${jSelesai} WIB)`,
+              jam_mulai: jMulai,
+              jam_selesai: jSelesai,
               kuota_maks: kuotaMaks,
               durasi_per_pasien: s.durasi_per_pasien || 20,
               terisi: kuotaMaks - sisa,
@@ -210,14 +213,20 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
         ? `${targetSesi.jam_mulai} - ${targetSesi.jam_selesai} WIB`
         : '08:00 - 12:00 WIB';
 
-      setSuccessTicket({
+      const newTicketObj = {
         kode: d.kode_reservasi || `RES-${Date.now().toString().slice(-6)}`,
         nomorAntrean: d.nomor_antrean ? `A-${String(d.nomor_antrean).padStart(3, '0')}` : `A-${Math.floor(Math.random() * 20 + 1).toString().padStart(3, '0')}`,
         estimasiJam: sesiTimeClean,
         layananNama: targetLayanan?.nama || 'Pemeriksaan Medis',
         sesiNama: targetSesi?.nama || 'Sesi Terjadwal',
-        tanggal: formData.tanggal
-      });
+        tanggal: formData.tanggal,
+        nama: formData.nama.trim(),
+        nik: formData.nik.trim()
+      };
+      setSuccessTicket(newTicketObj);
+      localStorage.setItem('bidan_last_ticket', JSON.stringify(newTicketObj));
+      localStorage.setItem('bidan_user_nik', formData.nik.trim());
+      localStorage.setItem('bidan_pasien_nama', formData.nama.trim());
       setStep(3);
     } catch (err: unknown) {
       const msg = pesanErrorApi(err, 'Gagal memproses reservasi ke database. Pastikan data lengkap.');

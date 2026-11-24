@@ -4,7 +4,7 @@ import { requireProfiles } from '../../middleware/rbac';
 import { validate } from './_validate';
 import { defineRoute } from './_registry';
 import { idParams } from '../../validation/common';
-import { ADMIN_LOKAL, P, SEMUA_STAF } from '../../auth/profiles';
+import { ADMIN_LOKAL, P, SEMUA_AUTH } from '../../auth/profiles';
 import {
   jadwalSchema,
   jadwalUpdateSchema,
@@ -30,9 +30,9 @@ const STATUS_ROLES = [P.SUPERADMIN, P.ADMIN_LOKAL, P.DOKTER, P.PERAWAT, P.RESEPS
 const registerJadwalList = (path: string): void => {
   defineRoute(
     router,
-    { method: 'post', path, auth: true, profiles: SEMUA_STAF, schemas: { body: reservasiListSchema } },
+    { method: 'post', path, auth: true, profiles: SEMUA_AUTH, schemas: { body: reservasiListSchema } },
     authenticate,
-    requireProfiles(...SEMUA_STAF),
+    requireProfiles(...SEMUA_AUTH),
     validate({ body: reservasiListSchema }),
     listJadwal
   );
@@ -72,11 +72,11 @@ defineRoute(
     method: 'post',
     path: '/reservasi/list',
     auth: true,
-    profiles: SEMUA_STAF,
+    profiles: SEMUA_AUTH,
     schemas: { body: reservasiListSchema }
   },
   authenticate,
-  requireProfiles(...SEMUA_STAF),
+  requireProfiles(...SEMUA_AUTH),
   validate({ body: reservasiListSchema }),
   listReservasi
 );

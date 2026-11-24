@@ -103,7 +103,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking, isLoading = false }) 
               </div>
               <div className="stat-item">
                 <span className="stat-value">2 Sesi</span>
-                <span className="stat-label">Pagi & Sore Terjadwal</span>
+                <span className="stat-label">Sesi Jam Terjadwal</span>
               </div>
               <div className="stat-item">
                 <span className="stat-value">SIPB Resmi</span>

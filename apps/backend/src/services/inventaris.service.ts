@@ -37,6 +37,29 @@ export class InventarisService {
     if (!row) {
       throw ApiError.internal('Gagal menyimpan obat');
     }
+
+    if (body.stok_awal && body.stok_awal > 0 && row.obat_id) {
+      const gudangId = this.repository.findDefaultGudang
+        ? await this.repository.findDefaultGudang()
+        : '1B398758-84BE-E525-4785-7E975D50FEA7';
+      const batchId = await this.repository.createBatch({
+        obatId: String(row.obat_id),
+        noBatch: `INIT-${body.kode}`,
+        tglKedaluwarsa: '2028-12-31',
+        hargaBeli: 0
+      });
+      if (batchId) {
+        await this.repository.addStok(batchId, gudangId, body.stok_awal);
+        await this.repository.addMutasi({
+          batchId,
+          gudangId,
+          stafId: null,
+          jumlah: body.stok_awal,
+          keterangan: 'Penerimaan stok awal master barang'
+        });
+      }
+    }
+
     return row;
   }
 
@@ -55,24 +78,45 @@ export class InventarisService {
     if (!(await this.repository.findObat(id))) {
       throw ApiError.fromCode('ERR-INV-02');
     }
+    const gudangId =
+      body.gudang_id ||
+      (this.repository.findDefaultGudang
+        ? await this.repository.findDefaultGudang()
+        : '1B398758-84BE-E525-4785-7E975D50FEA7');
     const batchId = await this.repository.createBatch({
       obatId: id,
-      noBatch: body.no_batch,
-      tglKedaluwarsa: body.tgl_kedaluwarsa,
-      hargaBeli: body.harga_beli
+      noBatch: body.no_batch || `MUT-${Date.now().toString().slice(-6)}`,
+      tglKedaluwarsa: body.tgl_kedaluwarsa || '2028-12-31',
+      hargaBeli: body.harga_beli ?? 0
     });
     if (!batchId) {
       throw ApiError.internal('Gagal membuat batch obat');
     }
 
-    await this.repository.addStok(batchId, body.gudang_id, body.jumlah);
-    await this.repository.addMutasi({
-      batchId,
-      gudangId: body.gudang_id,
-      stafId,
-      jumlah: body.jumlah,
-      keterangan: body.keterangan ?? 'Restock'
-    });
+    const jenis = body.jenis ?? 'MASUK';
+    if (jenis === 'KELUAR') {
+      if (this.repository.reduceStok) {
+        await this.repository.reduceStok(batchId, gudangId, body.jumlah);
+      }
+      if (this.repository.addMutasiKeluar) {
+        await this.repository.addMutasiKeluar({
+          batchId,
+          gudangId,
+          stafId,
+          jumlah: body.jumlah,
+          keterangan: body.keterangan ?? 'Pengurangan / pemakaian stok medis'
+        });
+      }
+    } else {
+      await this.repository.addStok(batchId, gudangId, body.jumlah);
+      await this.repository.addMutasi({
+        batchId,
+        gudangId,
+        stafId,
+        jumlah: body.jumlah,
+        keterangan: body.keterangan ?? 'Restock'
+      });
+    }
 
     return { batch_id: batchId, jumlah: body.jumlah };
   }

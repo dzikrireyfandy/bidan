@@ -51,8 +51,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
       });
 
       if (response.data && response.data.success) {
-        const { token, peran } = response.data.data;
-        const displayName = (response.data.data as any).nama || identifier.trim();
+        const resData = response.data.data as any;
+        const { token, peran } = resData;
+        const displayName = resData.nama || identifier.trim();
         session.simpanToken(token);
         
         let roleType: 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN' = 'ADMIN_LOKAL';
@@ -65,6 +66,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToHo
         localStorage.setItem('bidan_user_identifier', identifier.trim());
         localStorage.setItem('bidan_user_nama', displayName);
         localStorage.setItem('bidan_pasien_nama', displayName);
+        if (resData.pasien_id) localStorage.setItem('bidan_user_pasien_id', resData.pasien_id);
+        if (resData.nik) localStorage.setItem('bidan_user_nik', resData.nik);
         setLoading(false);
         onLoginSuccess(roleType);
         return;

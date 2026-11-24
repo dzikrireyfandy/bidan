@@ -21,11 +21,13 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ onOpenBooking,
             const kuotaMaks = Number(s.kuota_maks || 15);
             const sisa = typeof s.sisa_kuota === 'number' ? s.sisa_kuota : kuotaMaks;
             const terisi = kuotaMaks - sisa;
+            const jMulai = s.jam_mulai ? String(s.jam_mulai).slice(0, 5) : (idx === 0 ? '08:00' : '16:00');
+            const jSelesai = s.jam_selesai ? String(s.jam_selesai).slice(0, 5) : (idx === 0 ? '12:00' : '20:00');
             return {
               sesi_id: s.jadwal_id || s.sesi_id || `SESI-${idx}`,
-              nama: s.nama || (idx === 0 ? 'Sesi Pagi' : 'Sesi Sore'),
-              jam_mulai: s.jam_mulai || (idx === 0 ? '08:00' : '16:00'),
-              jam_selesai: s.jam_selesai || (idx === 0 ? '12:00' : '20:00'),
+              nama: `Sesi Praktik (${jMulai} - ${jSelesai} WIB)`,
+              jam_mulai: jMulai,
+              jam_selesai: jSelesai,
               kuota_maks: kuotaMaks,
               durasi_per_pasien: s.durasi_per_pasien || 20,
               terisi: terisi >= 0 ? terisi : 0,

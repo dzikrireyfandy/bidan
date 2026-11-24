@@ -11,6 +11,9 @@ export interface LoginResult {
   peran: Peran;
   subPeran: SubPeran | null;
   nama?: string;
+  pasien_id?: string | null;
+  nik?: string | null;
+  username?: string;
 }
 
 export class AuthService {
@@ -56,7 +59,10 @@ export class AuthService {
       }),
       peran: akun.peran,
       subPeran: akun.sub_peran,
-      nama: userDisplayName
+      nama: userDisplayName,
+      pasien_id: akun.pasien_id ?? null,
+      nik: akun.nik ?? null,
+      username: akun.username
     };
   }
 

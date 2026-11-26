@@ -989,10 +989,179 @@ button {
 
 .dash-shell {
   min-height: 100vh;
-  background: #f8fafc;
+  background: #f9fafb;
   display: flex;
   align-items: stretch;
-  color: var(--color-slate-800);
+  color: #111827;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-metric-strip {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-metric-divider {
+  width: 1px;
+  height: 16px;
+  background: #e5e7eb;
+}
+
+.dash-filter-pill {
+  padding: 0.32rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #4b5563;
+  transition: all 0.15s ease;
+}
+
+.dash-filter-pill:hover {
+  background: #f9fafb;
+  color: #111827;
+}
+
+.dash-filter-pill.active {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+}
+
+/*Kasir Slide-Over Receipt Drawer*/
+.dash-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.35);
+  z-index: 1250;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dash-drawer-panel {
+  width: 100%;
+  max-width: 400px;
+  background: #ffffff;
+  height: 100%;
+  border-left: 1px solid #e5e7eb;
+  box-shadow: -12px 0 30px -8px rgba(17, 24, 39, 0.12);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow-y: auto;
+  animation: dash-drawer-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dash-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/*RME 2-Panel Clinical Workspace*/
+.rme-workspace {
+  display: grid;
+  grid-template-columns: 310px minmax(0, 1fr);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 620px;
+}
+
+.rme-queue-panel {
+  background: #f9fafb;
+  border-right: 1px solid #e5e7eb;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  max-height: 760px;
+}
+
+.rme-queue-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.rme-patient-card {
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rme-patient-card:hover {
+  border-color: #cbd5e1;
+}
+
+.rme-patient-card.selected {
+  border: 2px solid var(--color-primary);
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(88, 32, 126, 0.08);
+}
+
+.rme-form-panel {
+  padding: 1.5rem;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.rme-vital-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+@media (max-width: 1100px) {
+  .rme-vital-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .rme-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .rme-queue-panel {
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+    max-height: 280px;
+  }
+}
+
+@media (max-width: 640px) {
+  .rme-vital-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rme-form-panel {
+    padding: 1.15rem;
+  }
 }
 
 .dash-sidebar-backdrop {
@@ -1175,24 +1344,29 @@ button {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 0.85rem;
+  font-size: 0.825rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .dash-table th {
-  padding: 0.75rem 0.85rem;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  color: #475569;
+  padding: 0.65rem 0.9rem;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  color: #6b7280;
   font-weight: 600;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 
 .dash-table td {
-  padding: 0.8rem 0.85rem;
-  border-bottom: 1px solid #f1f5f9;
-  color: #1e293b;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #111827;
   vertical-align: middle;
+}
+
+.dash-table tbody tr:hover td {
+  background: #fcfcfd;
 }
 
 .dash-input,

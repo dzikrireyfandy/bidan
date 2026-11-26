@@ -87,6 +87,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
 
   // Antrean, Pasien, & Sesi
   const [queueList, setQueueList] = useState<any[]>([]);
+  const [queueStatusFilter, setQueueStatusFilter] = useState<'SEMUA' | 'MENUNGGU' | 'DIPANGGIL' | 'SELESAI'>('SEMUA');
+  const [queueSearch, setQueueSearch] = useState<string>('');
   const [activeQueueNum, setActiveQueueNum] = useState<string>('-');
   const [callAlert, setCallAlert] = useState<string | null>(null);
   const [registeredPatients, setRegisteredPatients] = useState<Array<{
@@ -129,6 +131,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   // Kasir & Keuangan State
   const [tagihanList, setTagihanList] = useState<any[]>([]);
   const [tagihanStatusFilter, setTagihanStatusFilter] = useState<'SEMUA' | 'BELUM_LUNAS' | 'LUNAS'>('SEMUA');
+  const [tagihanSearch, setTagihanSearch] = useState<string>('');
+  const [kasirDrawerTagihan, setKasirDrawerTagihan] = useState<any | null>(null);
+  const [kasirDrawerRincian, setKasirDrawerRincian] = useState<any[]>([]);
   const [rekapMetode, setRekapMetode] = useState<any[]>([]);
   const [kasirForm, setKasirForm] = useState({
     tagihan_id: '',
@@ -183,8 +188,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   const [emailLogs, setEmailLogs] = useState<NotifikasiEmailPasien[]>([]);
   const [previewEmail, setPreviewEmail] = useState<NotifikasiEmailPasien | null>(null);
 
-  // RME Bidan State (Clean SOAP + Resep Obat Auto-Billing)
+  // RME Bidan State (Clean 2-Panel SOAP + Resep Obat Auto-Billing)
   const [rmeSearchNik, setRmeSearchNik] = useState<string>('');
+  const [rmeQueueFilter, setRmeQueueFilter] = useState<string>('');
+  const [rmeLeftMode, setRmeLeftMode] = useState<'antrean' | 'pasien'>('antrean');
   const [selectedRmePatient, setSelectedRmePatient] = useState<any>(null);
   const [isSavingRme, setIsSavingRme] = useState<boolean>(false);
   const [rmeLayananId, setRmeLayananId] = useState<string>('');
@@ -516,15 +523,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
         (patient?.pasien_id && q.pasien_id === patient.pasien_id) ||
         (patient?.nik && q.nik === patient.nik)
     );
-    if (matchingReservation?.layanan_id) {
+    if (patient?.layanan_id) {
+      setRmeLayananId(patient.layanan_id);
+    } else if (matchingReservation?.layanan_id) {
       setRmeLayananId(matchingReservation.layanan_id);
     }
-    if (switchView && isSuperAdmin) {
-      setCurrentRole('DOKTER');
-      setRmeTab('input');
+    if (switchView) {
+      if (isSuperAdmin) {
+        setCurrentRole('DOKTER');
+        setRmeTab('input');
+      }
+      notify(`Pasien ${patient?.nama || ''} dipilih untuk pemeriksaan RME.`, 'info');
     }
-    notify(`Pasien ${patient?.nama || ''} dipilih untuk pemeriksaan RME.`, 'info');
   };
+
+  // Auto-pilih pasien antrean aktif pertama saat Bidan membuka RME jika belum ada pasien terpilih
+  useEffect(() => {
+    if (selectedRmePatient || queueList.length === 0) return;
+    const priorityQueue =
+      queueList.find((q) => q.status === 'DIPANGGIL') ||
+      queueList.find((q) => q.status === 'MENUNGGU');
+    if (priorityQueue && priorityQueue.pasien_id) {
+      const regMatch = registeredPatients.find((p) => p.pasien_id === priorityQueue.pasien_id);
+      setSelectedRmePatient({
+        pasien_id: priorityQueue.pasien_id,
+        nama: priorityQueue.nama,
+        nik: priorityQueue.nik || regMatch?.nik || '-',
+        no_rm: regMatch?.no_rm || '-',
+        alamat: regMatch?.alamat || 'Kota Jambi'
+      });
+      if (priorityQueue.layanan_id) {
+        setRmeLayananId(priorityQueue.layanan_id);
+      }
+    }
+  }, [queueList, registeredPatients, selectedRmePatient]);
 
   // Human-readable audit description
   const formatAktivitasManusia = (aksi: string, tabel: string, _user_ref?: string, keterangan?: string): string => {
@@ -676,7 +708,36 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     }
   };
 
-  // Kasir payment handler
+  // Kasir Slide-Over Drawer & Payment Handlers
+  const openKasirDrawer = (tagihan: any) => {
+    const tot = Number(tagihan.total_tagihan !== undefined ? tagihan.total_tagihan : tagihan.total || 0);
+    const dibayar = Number(tagihan.total_dibayar !== undefined ? tagihan.total_dibayar : tagihan.terbayar || 0);
+    const sisaNominal = Math.max(0, Number(tagihan.sisa !== undefined ? tagihan.sisa : tot - dibayar));
+    setKasirDrawerTagihan(tagihan);
+    setKasirDrawerRincian([]);
+    setKasirForm({
+      tagihan_id: tagihan.tagihan_id,
+      jumlah: String(sisaNominal > 0 ? sisaNominal : tot),
+      metode: 'TUNAI',
+      jenis: 'PELUNASAN'
+    });
+    if (tagihan.kunjungan_id) {
+      apiClient
+        .post(`/kunjungan/${tagihan.kunjungan_id}/tagihan/detail`, {})
+        .then((res) => {
+          if (Array.isArray(res.data?.data?.rincian)) {
+            setKasirDrawerRincian(res.data.data.rincian);
+          }
+        })
+        .catch(() => {});
+    }
+  };
+
+  const closeKasirDrawer = () => {
+    setKasirDrawerTagihan(null);
+    setKasirDrawerRincian([]);
+  };
+
   const handleKasirSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!kasirForm.tagihan_id) {
@@ -698,6 +759,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       });
       notify(`Pembayaran Rp ${jlh.toLocaleString('id-ID')} (${kasirForm.metode}) berhasil dikonfirmasi.`, 'success');
       setKasirForm({ tagihan_id: '', jumlah: '', metode: 'TUNAI', jenis: 'PELUNASAN' });
+      closeKasirDrawer();
       refreshKeuanganDanTagihan();
     } catch (err) {
       notify(pesanErrorApi(err, 'Gagal mencatat pembayaran kasir.'), 'error');
@@ -965,8 +1027,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     }, 0);
 
   const filteredTagihanList = tagihanList.filter((t) => {
-    if (tagihanStatusFilter === 'BELUM_LUNAS') return t.status !== 'LUNAS';
-    if (tagihanStatusFilter === 'LUNAS') return t.status === 'LUNAS';
+    if (tagihanStatusFilter === 'BELUM_LUNAS' && t.status === 'LUNAS') return false;
+    if (tagihanStatusFilter === 'LUNAS' && t.status !== 'LUNAS') return false;
+    if (tagihanSearch.trim()) {
+      const q = tagihanSearch.toLowerCase().trim();
+      const noTag = String(t.no_tagihan || `INV-${String(t.tagihan_id).slice(0, 6)}`).toLowerCase();
+      const nama = String(t.nama_pasien || '').toLowerCase();
+      const rincian = String(t.rincian_item || '').toLowerCase();
+      return noTag.includes(q) || nama.includes(q) || rincian.includes(q);
+    }
+    return true;
+  });
+
+  const filteredQueueList = queueList.filter((q) => {
+    if (queueStatusFilter !== 'SEMUA' && q.status !== queueStatusFilter) return false;
+    if (queueSearch.trim()) {
+      const s = queueSearch.toLowerCase().trim();
+      return (
+        String(q.no || '').toLowerCase().includes(s) ||
+        String(q.nama || '').toLowerCase().includes(s) ||
+        String(q.layanan || '').toLowerCase().includes(s)
+      );
+    }
     return true;
   });
 
@@ -1569,50 +1651,43 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   </div>
                 )}
 
-                {/* 1. ANTREAN HARI INI */}
+                {/* 1. ANTREAN HARI INI — SLIM METRIC STRIP + CLEAN LEDGER TABLE */}
                 {adminTab === 'antrean' && (
                   <div>
-                    <div className="dash-grid-4" style={{ marginBottom: '1.25rem' }}>
-                      {sesiList.slice(0, 2).map((sesi, idx) => {
-                        const kuotaMaks = Number(sesi.kuota_maks) || 15;
-                        const kuotaTerisi = Number(sesi.kuota_terisi) || 0;
-                        const sisa = Math.max(0, kuotaMaks - kuotaTerisi);
-                        return (
-                          <div key={sesi.jadwal_id || idx} className="dash-card">
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
-                              Sesi {sesi.jam_mulai ? String(sesi.jam_mulai).slice(0, 5) : '08:00'} - {sesi.jam_selesai ? String(sesi.jam_selesai).slice(0, 5) : '12:00'} WIB
-                            </div>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '0.25rem 0' }}>
-                              {kuotaTerisi} / {kuotaMaks}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: sisa > 0 ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
-                              Sisa {sisa} kuota
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      <div className="dash-card">
-                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Sedang Dilayani</div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#d97706', margin: '0.25rem 0' }}>{activeQueueNum}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Ruang Periksa 1</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                      <div>
+                        <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>Antrean Ruang Periksa</h2>
+                        <p style={{ fontSize: '0.78rem', color: '#6b7280' }}>
+                          Tagihan dibuat otomatis saat pendaftaran dan diperbarui saat pemeriksaan selesai.
+                        </p>
                       </div>
 
-                      <div className="dash-card">
-                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Menunggu Panggilan</div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0.25rem 0' }}>
-                          {queueList.filter((q) => q.status === 'MENUNGGU').length} Pasien
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                        <div className="dash-metric-strip">
+                          <span>
+                            <span style={{ color: '#6b7280' }}>Dilayani:</span>{' '}
+                            <strong style={{ color: '#b45309' }}>{activeQueueNum}</strong>
+                          </span>
+                          <span className="dash-metric-divider" />
+                          <span>
+                            <span style={{ color: '#6b7280' }}>Menunggu:</span>{' '}
+                            <strong style={{ color: '#111827' }}>
+                              {queueList.filter((q) => q.status === 'MENUNGGU').length} Pasien
+                            </strong>
+                          </span>
+                          {sesiList[0] && (
+                            <>
+                              <span className="dash-metric-divider" />
+                              <span>
+                                <span style={{ color: '#6b7280' }}>Kuota Sesi:</span>{' '}
+                                <strong style={{ color: '#047857' }}>
+                                  {Number(sesiList[0].kuota_terisi) || 0}/{Number(sesiList[0].kuota_maks) || 15}
+                                </strong>
+                              </span>
+                            </>
+                          )}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Ruang Tunggu</div>
-                      </div>
-                    </div>
 
-                    <div className="dash-card" style={{ padding: 0, overflow: 'hidden' }}>
-                      <div style={{ padding: '1.15rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                        <div>
-                          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Daftar Antrean Pasien</h3>
-                          <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Tagihan layanan dibuat otomatis saat pendaftaran dan diperbarui saat pemeriksaan selesai.</p>
-                        </div>
                         {(() => {
                           const nextPatient = queueList.find((q) => q.status === 'MENUNGGU');
                           return nextPatient ? (
@@ -1620,12 +1695,55 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                               type="button"
                               onClick={() => handleCallQueue(nextPatient.no, nextPatient.nama, nextPatient.reservasi_id)}
                               className="btn btn-primary"
-                              style={{ fontSize: '0.8125rem', padding: '0.5rem 0.9rem' }}
+                              style={{ fontSize: '0.78rem', padding: '0.52rem 0.9rem', borderRadius: '8px' }}
                             >
                               Panggil Berikutnya ({nextPatient.no})
                             </button>
                           ) : null;
                         })()}
+                      </div>
+                    </div>
+
+                    <div className="dash-card" style={{ padding: 0, overflow: 'hidden' }}>
+                      <div style={{ padding: '0.85rem 1rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.65rem' }}>
+                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                          {(
+                            [
+                              { key: 'SEMUA', label: `Semua (${queueList.length})` },
+                              { key: 'MENUNGGU', label: `Menunggu (${queueList.filter((q) => q.status === 'MENUNGGU').length})` },
+                              { key: 'DIPANGGIL', label: `Dipanggil (${queueList.filter((q) => q.status === 'DIPANGGIL').length})` },
+                              { key: 'SELESAI', label: `Selesai (${queueList.filter((q) => q.status === 'SELESAI').length})` }
+                            ] as const
+                          ).map((tab) => (
+                            <button
+                              key={tab.key}
+                              type="button"
+                              className={`dash-filter-pill ${queueStatusFilter === tab.key ? 'active' : ''}`}
+                              onClick={() => setQueueStatusFilter(tab.key)}
+                            >
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <input
+                            type="text"
+                            className="dash-input"
+                            placeholder="Cari no. antrean / nama..."
+                            value={queueSearch}
+                            onChange={(e) => setQueueSearch(e.target.value)}
+                            style={{ width: '210px', padding: '0.38rem 0.65rem', fontSize: '0.78rem' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setAdminTab('pendaftaran')}
+                            className="btn btn-secondary"
+                            style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', borderRadius: '7px' }}
+                          >
+                            + Walk-In Loket
+                          </button>
+                        </div>
                       </div>
 
                       <div className="dash-table-wrap">
@@ -1634,39 +1752,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                             <tr>
                               <th>No. Antrean</th>
                               <th>Tanggal</th>
-                              <th>Nama Pasien</th>
+                              <th>Pasien</th>
                               <th>Layanan</th>
                               <th>Jam Sesi</th>
                               <th>Status</th>
-                              <th style={{ textAlign: 'right' }}>Aksi Loket</th>
+                              <th style={{ textAlign: 'right' }}>Aksi</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {queueList.length === 0 ? (
+                            {filteredQueueList.length === 0 ? (
                               <tr>
-                                <td colSpan={7} style={{ padding: '2.25rem', textAlign: 'center', color: '#64748b' }}>
-                                  Belum ada antrean pasien terdaftar.
+                                <td colSpan={7} style={{ padding: '2.25rem', textAlign: 'center', color: '#6b7280' }}>
+                                  Tidak ada data antrean pada filter ini.
                                 </td>
                               </tr>
                             ) : (
-                              queueList.map((q, idx) => (
+                              filteredQueueList.map((q, idx) => (
                                 <tr key={q.reservasi_id || `${q.tanggal}-${q.no}-${idx}`} style={{ background: q.status === 'DIPANGGIL' ? '#faf5fe' : 'transparent' }}>
-                                  <td style={{ fontWeight: 800, color: 'var(--color-primary-dark)' }}>{q.no}</td>
-                                  <td style={{ whiteSpace: 'nowrap', color: '#475569' }}>
-                                    {q.tanggal ? new Date(q.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Hari Ini'}
+                                  <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-primary-dark)' }}>{q.no}</td>
+                                  <td style={{ whiteSpace: 'nowrap', color: '#6b7280' }}>
+                                    {q.tanggal ? new Date(q.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Hari Ini'}
                                   </td>
-                                  <td style={{ fontWeight: 600 }}>{q.nama}</td>
-                                  <td>{q.layanan}</td>
-                                  <td style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{q.sesi}</td>
+                                  <td style={{ fontWeight: 600, color: '#111827' }}>{q.nama}</td>
+                                  <td style={{ color: '#4b5563' }}>{q.layanan}</td>
+                                  <td style={{ color: '#6b7280', whiteSpace: 'nowrap' }}>{q.sesi}</td>
                                   <td>
                                     <span
                                       style={{
-                                        fontSize: '0.72rem',
-                                        fontWeight: 700,
-                                        padding: '0.2rem 0.55rem',
-                                        borderRadius: '9999px',
-                                        background: q.status === 'SELESAI' ? '#dcfce7' : q.status === 'DIPANGGIL' ? '#fef3c7' : '#f1f5f9',
-                                        color: q.status === 'SELESAI' ? '#166534' : q.status === 'DIPANGGIL' ? '#92400e' : '#475569'
+                                        fontSize: '0.7rem',
+                                        fontWeight: 600,
+                                        padding: '0.18rem 0.5rem',
+                                        borderRadius: '5px',
+                                        border: `1px solid ${q.status === 'SELESAI' ? '#a7f3d0' : q.status === 'DIPANGGIL' ? '#fde68a' : '#e5e7eb'}`,
+                                        background: q.status === 'SELESAI' ? '#ecfdf5' : q.status === 'DIPANGGIL' ? '#fffbeb' : '#f9fafb',
+                                        color: q.status === 'SELESAI' ? '#065f46' : q.status === 'DIPANGGIL' ? '#92400e' : '#4b5563'
                                       }}
                                     >
                                       {q.status}
@@ -1674,12 +1793,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                   </td>
                                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                                     {q.status !== 'SELESAI' ? (
-                                      <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                                      <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
                                         <button
                                           type="button"
                                           onClick={() => handleCallQueue(q.no, q.nama, q.reservasi_id)}
                                           className="btn btn-secondary"
-                                          style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
+                                          style={{ padding: '0.28rem 0.65rem', fontSize: '0.75rem', borderRadius: '6px' }}
                                         >
                                           Panggil
                                         </button>
@@ -1687,13 +1806,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                           type="button"
                                           onClick={() => handleFinishQueue(q.no, q.reservasi_id)}
                                           className="btn btn-secondary"
-                                          style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem', color: '#166534', background: '#ecfdf5', borderColor: '#a7f3d0' }}
+                                          style={{ padding: '0.28rem 0.65rem', fontSize: '0.75rem', borderRadius: '6px', color: '#065f46', background: '#ecfdf5', borderColor: '#a7f3d0' }}
                                         >
                                           Selesai
                                         </button>
                                       </div>
                                     ) : (
-                                      <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 700 }}>
+                                      <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600 }}>
                                         Selesai
                                       </span>
                                     )}
@@ -2185,178 +2304,84 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   </div>
                 )}
 
-                {/* 5. KASIR & TAGIHAN OTOMATIS */}
+                {/* 5. KASIR & TAGIHAN OTOMATIS — SLIM STRIP + LEDGER TABLE + SLIDE-OVER DRAWER */}
                 {adminTab === 'kasir' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                    <div className="dash-grid-3">
-                      <div className="dash-card">
-                        <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Total Berkas Tagihan</div>
-                        <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f172a', marginTop: '0.25rem' }}>
-                          {tagihanList.length} Tagihan
-                        </div>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                      <div>
+                        <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>
+                          Kasir &amp; Tagihan Otomatis
+                        </h2>
+                        <p style={{ fontSize: '0.78rem', color: '#6b7280' }}>
+                          Tagihan ditarik otomatis dari layanan pendaftaran dan obat RME Bidan. Klik &ldquo;Lunasi&rdquo; untuk mencatat pembayaran.
+                        </p>
                       </div>
-                      <div className="dash-card">
-                        <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Menunggu Pelunasan</div>
-                        <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#d97706', marginTop: '0.25rem' }}>
-                          {unpaidCount} Pasien
-                        </div>
-                      </div>
-                      <div className="dash-card">
-                        <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Sudah Lunas</div>
-                        <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#16a34a', marginTop: '0.25rem' }}>
-                          {tagihanList.filter((t) => t.status === 'LUNAS').length} Tagihan
-                        </div>
+
+                      <div className="dash-metric-strip">
+                        <span>
+                          <span style={{ color: '#6b7280' }}>Belum Lunas:</span>{' '}
+                          <strong style={{ color: '#b45309' }}>{unpaidCount} Pasien</strong>
+                        </span>
+                        <span className="dash-metric-divider" />
+                        <span>
+                          <span style={{ color: '#6b7280' }}>Piutang:</span>{' '}
+                          <strong style={{ color: '#111827' }}>Rp {totalPiutangBelumLunas.toLocaleString('id-ID')}</strong>
+                        </span>
+                        <span className="dash-metric-divider" />
+                        <span>
+                          <span style={{ color: '#6b7280' }}>Penerimaan Kasir:</span>{' '}
+                          <strong style={{ color: '#047857' }}>Rp {totalInflowKasir.toLocaleString('id-ID')}</strong>
+                        </span>
                       </div>
                     </div>
 
-                    {/* Konfirmasi Pembayaran / Pelunasan */}
-                    <div className="dash-card" id="form-pelunasan-kasir">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-                        <div>
-                          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.2rem' }}>
-                            Verifikasi &amp; Pelunasan Tagihan Pasien
-                          </h3>
-                          <p style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                            Tagihan disusun otomatis dari layanan pendaftaran dan resep obat pemeriksaan bidan. Pilih tagihan untuk melunasi hari ini atau di hari berikutnya.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenCreateBilling()}
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.78rem', padding: '0.45rem 0.85rem' }}
-                        >
-                          Koreksi / Tagihan Manual
-                        </button>
-                      </div>
-
-                      <form onSubmit={handleKasirSubmit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.85rem', alignItems: 'flex-end' }}>
-                        <div>
-                          <label className="dash-label">Tagihan Pasien (Belum Lunas)</label>
-                          <select
-                            required
-                            className="dash-select"
-                            value={kasirForm.tagihan_id}
-                            onChange={(e) => {
-                              const tId = e.target.value;
-                              const selected = tagihanList.find((t) => t.tagihan_id === tId);
-                              const sisaVal = selected
-                                ? String(
-                                    selected.sisa !== undefined
-                                      ? selected.sisa
-                                      : Number(selected.total_tagihan || selected.total || 0) -
-                                        Number(selected.total_dibayar || selected.terbayar || 0)
-                                  )
-                                : '';
-                              setKasirForm({
-                                ...kasirForm,
-                                tagihan_id: tId,
-                                jumlah: sisaVal
-                              });
-                            }}
-                          >
-                            <option value="">-- Pilih Tagihan --</option>
-                            {tagihanList
-                              .filter((t) => t.status !== 'LUNAS')
-                              .map((t) => {
-                                const calculatedSisa = Number(
-                                  t.sisa !== undefined
-                                    ? t.sisa
-                                    : Number(t.total_tagihan || t.total || 0) - Number(t.total_dibayar || t.terbayar || 0)
-                                );
-                                const noTag = t.no_tagihan || `INV-${String(t.tagihan_id).slice(0, 6).toUpperCase()}`;
-                                return (
-                                  <option key={t.tagihan_id} value={t.tagihan_id}>
-                                    {noTag} — {t.nama_pasien || 'Pasien'} (Rp {calculatedSisa.toLocaleString('id-ID')})
-                                  </option>
-                                );
-                              })}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="dash-label">Nominal Bayar (Rp)</label>
-                          <input
-                            type="number"
-                            min="1"
-                            required
-                            className="dash-input"
-                            placeholder="Nominal pembayaran"
-                            value={kasirForm.jumlah}
-                            onChange={(e) => setKasirForm({ ...kasirForm, jumlah: e.target.value })}
-                          />
-                        </div>
-
-                        <div>
-                          <label className="dash-label">Metode Pembayaran</label>
-                          <select
-                            className="dash-select"
-                            value={kasirForm.metode}
-                            onChange={(e) => setKasirForm({ ...kasirForm, metode: e.target.value as any })}
-                          >
-                            <option value="TUNAI">Tunai (Cash)</option>
-                            <option value="QRIS">QRIS</option>
-                            <option value="TRANSFER">Transfer Bank</option>
-                            <option value="BPJS">Penjamin BPJS</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="dash-label">Jenis Pembayaran</label>
-                          <select
-                            className="dash-select"
-                            value={kasirForm.jenis}
-                            onChange={(e) => setKasirForm({ ...kasirForm, jenis: e.target.value as any })}
-                          >
-                            <option value="PELUNASAN">Pelunasan</option>
-                            <option value="CICILAN">Cicilan / Bertahap</option>
-                            <option value="UANG_MUKA">Uang Muka</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <button type="submit" disabled={kasirSubmitting} className="btn btn-primary" style={{ width: '100%', padding: '0.62rem' }}>
-                            {kasirSubmitting ? 'Memproses...' : 'Konfirmasi Lunas'}
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-
-                    {/* Tabel Daftar Tagihan Otomatis */}
                     <div className="dash-card" style={{ padding: 0, overflow: 'hidden' }}>
-                      <div style={{ padding: '1.15rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginRight: '0.5rem' }}>
-                            Daftar Tagihan Pasien
-                          </h3>
-                          {(['SEMUA', 'BELUM_LUNAS', 'LUNAS'] as const).map((st) => (
+                      <div style={{ padding: '0.85rem 1rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.65rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                          {(
+                            [
+                              { key: 'SEMUA', label: `Semua (${tagihanList.length})` },
+                              { key: 'BELUM_LUNAS', label: `Belum Lunas (${unpaidCount})` },
+                              { key: 'LUNAS', label: `Lunas (${tagihanList.filter((t) => t.status === 'LUNAS').length})` }
+                            ] as const
+                          ).map((st) => (
                             <button
-                              key={st}
+                              key={st.key}
                               type="button"
-                              onClick={() => setTagihanStatusFilter(st)}
-                              style={{
-                                padding: '0.3rem 0.65rem',
-                                borderRadius: '6px',
-                                fontSize: '0.75rem',
-                                fontWeight: 700,
-                                border: '1px solid #cbd5e1',
-                                background: tagihanStatusFilter === st ? 'var(--color-primary)' : '#ffffff',
-                                color: tagihanStatusFilter === st ? '#ffffff' : '#475569'
-                              }}
+                              className={`dash-filter-pill ${tagihanStatusFilter === st.key ? 'active' : ''}`}
+                              onClick={() => setTagihanStatusFilter(st.key)}
                             >
-                              {st === 'SEMUA' ? 'Semua' : st === 'BELUM_LUNAS' ? `Belum Lunas (${unpaidCount})` : 'Sudah Lunas'}
+                              {st.label}
                             </button>
                           ))}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={refreshKeuanganDanTagihan}
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem' }}
-                        >
-                          Muat Ulang
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <input
+                            type="text"
+                            className="dash-input"
+                            placeholder="Cari no. tagihan / nama..."
+                            value={tagihanSearch}
+                            onChange={(e) => setTagihanSearch(e.target.value)}
+                            style={{ width: '210px', padding: '0.38rem 0.65rem', fontSize: '0.78rem' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCreateBilling()}
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '0.4rem 0.75rem', borderRadius: '7px' }}
+                          >
+                            Koreksi Manual
+                          </button>
+                          <button
+                            type="button"
+                            onClick={refreshKeuanganDanTagihan}
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '0.4rem 0.75rem', borderRadius: '7px' }}
+                          >
+                            Muat Ulang
+                          </button>
+                        </div>
                       </div>
 
                       <div className="dash-table-wrap">
@@ -2366,10 +2391,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                               <th>No. Tagihan</th>
                               <th>Tanggal</th>
                               <th>Pasien</th>
-                              <th>Rincian Layanan &amp; Obat</th>
-                              <th>Total</th>
-                              <th>Dibayar</th>
-                              <th>Sisa</th>
+                              <th>Rincian Otomatis (Layanan + Obat)</th>
+                              <th style={{ textAlign: 'right' }}>Total</th>
+                              <th style={{ textAlign: 'right' }}>Dibayar</th>
+                              <th style={{ textAlign: 'right' }}>Sisa</th>
                               <th>Status</th>
                               <th style={{ textAlign: 'right' }}>Aksi</th>
                             </tr>
@@ -2377,7 +2402,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                           <tbody>
                             {filteredTagihanList.length === 0 ? (
                               <tr>
-                                <td colSpan={9} style={{ padding: '2.25rem', textAlign: 'center', color: '#64748b' }}>
+                                <td colSpan={9} style={{ padding: '2.25rem', textAlign: 'center', color: '#6b7280' }}>
                                   Belum ada data tagihan pada kategori ini.
                                 </td>
                               </tr>
@@ -2389,29 +2414,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                 const noTag = tagihan.no_tagihan || `INV-${String(tagihan.tagihan_id).slice(0, 6).toUpperCase()}`;
                                 return (
                                   <tr key={tagihan.tagihan_id || idx}>
-                                    <td style={{ fontWeight: 700, color: 'var(--color-primary-dark)', whiteSpace: 'nowrap' }}>{noTag}</td>
-                                    <td style={{ color: '#64748b', whiteSpace: 'nowrap' }}>
-                                      {tagihan.tgl_terbit ? new Date(tagihan.tgl_terbit).toLocaleDateString('id-ID') : '-'}
+                                    <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap' }}>{noTag}</td>
+                                    <td style={{ color: '#6b7280', whiteSpace: 'nowrap' }}>
+                                      {tagihan.tgl_terbit ? new Date(tagihan.tgl_terbit).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}
                                     </td>
-                                    <td style={{ fontWeight: 600 }}>{tagihan.nama_pasien || 'Pasien'}</td>
-                                    <td style={{ color: '#475569', maxWidth: '260px', fontSize: '0.8rem' }}>
+                                    <td style={{ fontWeight: 600, color: '#111827' }}>{tagihan.nama_pasien || 'Pasien'}</td>
+                                    <td style={{ color: '#4b5563', maxWidth: '280px', fontSize: '0.78rem' }}>
                                       {tagihan.rincian_item || 'Layanan Pemeriksaan'}
                                     </td>
-                                    <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Rp {tot.toLocaleString('id-ID')}</td>
-                                    <td style={{ color: '#16a34a', fontWeight: 600, whiteSpace: 'nowrap' }}>Rp {dibayar.toLocaleString('id-ID')}</td>
-                                    <td style={{ color: sisaNominal > 0 ? '#dc2626' : '#64748b', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                    <td style={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                      Rp {tot.toLocaleString('id-ID')}
+                                    </td>
+                                    <td style={{ textAlign: 'right', color: '#059669', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                      Rp {dibayar.toLocaleString('id-ID')}
+                                    </td>
+                                    <td style={{ textAlign: 'right', color: sisaNominal > 0 ? '#dc2626' : '#6b7280', fontWeight: 700, whiteSpace: 'nowrap' }}>
                                       Rp {sisaNominal.toLocaleString('id-ID')}
                                     </td>
                                     <td>
                                       <span
                                         style={{
-                                          fontSize: '0.72rem',
-                                          fontWeight: 700,
-                                          padding: '0.2rem 0.55rem',
-                                          borderRadius: '9999px',
+                                          fontSize: '0.7rem',
+                                          fontWeight: 600,
+                                          padding: '0.18rem 0.5rem',
+                                          borderRadius: '5px',
                                           whiteSpace: 'nowrap',
-                                          background: tagihan.status === 'LUNAS' ? '#dcfce7' : '#fef3c7',
-                                          color: tagihan.status === 'LUNAS' ? '#166534' : '#92400e'
+                                          border: `1px solid ${tagihan.status === 'LUNAS' ? '#a7f3d0' : '#fde68a'}`,
+                                          background: tagihan.status === 'LUNAS' ? '#ecfdf5' : '#fffbeb',
+                                          color: tagihan.status === 'LUNAS' ? '#065f46' : '#92400e'
                                         }}
                                       >
                                         {tagihan.status === 'LUNAS' ? 'LUNAS' : 'BELUM LUNAS'}
@@ -2421,21 +2451,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                       {tagihan.status !== 'LUNAS' ? (
                                         <button
                                           type="button"
-                                          onClick={() => {
-                                            setKasirForm({
-                                              ...kasirForm,
-                                              tagihan_id: tagihan.tagihan_id,
-                                              jumlah: String(sisaNominal > 0 ? sisaNominal : tot)
-                                            });
-                                            document.getElementById('form-pelunasan-kasir')?.scrollIntoView({ behavior: 'smooth' });
-                                          }}
+                                          onClick={() => openKasirDrawer(tagihan)}
                                           className="btn btn-primary"
-                                          style={{ padding: '0.32rem 0.7rem', fontSize: '0.75rem' }}
+                                          style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', borderRadius: '6px' }}
                                         >
-                                          Pilih &amp; Lunasi
+                                          Lunasi
                                         </button>
                                       ) : (
-                                        <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>Terverifikasi</span>
+                                        <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Terverifikasi</span>
                                       )}
                                     </td>
                                   </tr>
@@ -2446,6 +2469,144 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                         </table>
                       </div>
                     </div>
+
+                    {/* Slide-Over Receipt & Payment Drawer */}
+                    {kasirDrawerTagihan && (() => {
+                      const tot = Number(kasirDrawerTagihan.total_tagihan !== undefined ? kasirDrawerTagihan.total_tagihan : kasirDrawerTagihan.total || 0);
+                      const dibayar = Number(kasirDrawerTagihan.total_dibayar !== undefined ? kasirDrawerTagihan.total_dibayar : kasirDrawerTagihan.terbayar || 0);
+                      const sisaNominal = Math.max(0, Number(kasirDrawerTagihan.sisa !== undefined ? kasirDrawerTagihan.sisa : tot - dibayar));
+                      const noTag = kasirDrawerTagihan.no_tagihan || `INV-${String(kasirDrawerTagihan.tagihan_id).slice(0, 6).toUpperCase()}`;
+
+                      return (
+                        <div className="dash-drawer-backdrop" onClick={closeKasirDrawer}>
+                          <div className="dash-drawer-panel" onClick={(e) => e.stopPropagation()}>
+                            <form onSubmit={handleKasirSubmit} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '100%', padding: '1.5rem' }}>
+                              <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: '1rem', marginBottom: '1rem', borderBottom: '1px solid #e5e7eb' }}>
+                                  <div>
+                                    <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>
+                                      {noTag}
+                                    </div>
+                                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-primary-dark)', marginTop: '0.15rem' }}>
+                                      {kasirDrawerTagihan.nama_pasien || 'Pasien'}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.1rem' }}>
+                                      Terbit: {kasirDrawerTagihan.tgl_terbit ? new Date(kasirDrawerTagihan.tgl_terbit).toLocaleDateString('id-ID') : '-'}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={closeKasirDrawer}
+                                    style={{ width: '30px', height: '30px', borderRadius: '6px', background: '#f3f4f6', color: '#4b5563', fontSize: '1.1rem', lineHeight: 1 }}
+                                    aria-label="Tutup panel pembayaran"
+                                  >
+                                    &times;
+                                  </button>
+                                </div>
+
+                                <div style={{ marginBottom: '1.15rem' }}>
+                                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', marginBottom: '0.4rem' }}>
+                                    Rincian Layanan &amp; Obat
+                                  </div>
+                                  <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '0.75rem', fontSize: '0.8rem', color: '#374151' }}>
+                                    {kasirDrawerRincian.length > 0 ? (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                        {kasirDrawerRincian.map((rItem: any, rIdx: number) => {
+                                          const layName = masterLayananList.find((l) => l.layanan_id === rItem.layanan_id)?.nama;
+                                          const obtName = masterObatList.find((o) => o.obat_id === rItem.obat_id)?.nama_generik;
+                                          const itemName = layName || obtName || 'Item Layanan / Obat';
+                                          return (
+                                            <div key={rItem.rincian_id || rIdx} className="tabular-nums" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                                              <span>{itemName} ({rItem.qty || 1}x)</span>
+                                              <span style={{ fontWeight: 600 }}>Rp {Number(rItem.subtotal || 0).toLocaleString('id-ID')}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <div>{kasirDrawerTagihan.rincian_item || 'Layanan Pemeriksaan'}</div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="tabular-nums" style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #e5e7eb', padding: '0.75rem 0', marginBottom: '1.15rem', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
+                                    <span>Total Tagihan</span>
+                                    <span>Rp {tot.toLocaleString('id-ID')}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
+                                    <span>Sudah Dibayar</span>
+                                    <span>Rp {dibayar.toLocaleString('id-ID')}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#111827', fontSize: '0.9rem', paddingTop: '0.25rem' }}>
+                                    <span>Sisa Pelunasan</span>
+                                    <span>Rp {sisaNominal.toLocaleString('id-ID')}</span>
+                                  </div>
+                                </div>
+
+                                <div style={{ marginBottom: '0.85rem' }}>
+                                  <label className="dash-label">Metode Pembayaran</label>
+                                  <select
+                                    className="dash-select"
+                                    value={kasirForm.metode}
+                                    onChange={(e) => setKasirForm({ ...kasirForm, metode: e.target.value as any })}
+                                  >
+                                    <option value="TUNAI">Tunai (Cash)</option>
+                                    <option value="QRIS">QRIS</option>
+                                    <option value="TRANSFER">Transfer Bank</option>
+                                    <option value="BPJS">Penjamin BPJS</option>
+                                  </select>
+                                </div>
+
+                                <div style={{ marginBottom: '0.85rem' }}>
+                                  <label className="dash-label">Jenis Transaksi</label>
+                                  <select
+                                    className="dash-select"
+                                    value={kasirForm.jenis}
+                                    onChange={(e) => setKasirForm({ ...kasirForm, jenis: e.target.value as any })}
+                                  >
+                                    <option value="PELUNASAN">Pelunasan</option>
+                                    <option value="CICILAN">Cicilan / Bertahap</option>
+                                    <option value="UANG_MUKA">Uang Muka</option>
+                                  </select>
+                                </div>
+
+                                <div style={{ marginBottom: '1.25rem' }}>
+                                  <label className="dash-label">Nominal Dibayar (Rp)</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    required
+                                    className="dash-input tabular-nums"
+                                    value={kasirForm.jumlah}
+                                    onChange={(e) => setKasirForm({ ...kasirForm, jumlah: e.target.value })}
+                                  />
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
+                                <button
+                                  type="button"
+                                  onClick={closeKasirDrawer}
+                                  className="btn btn-secondary"
+                                  style={{ flex: '0 0 auto', padding: '0.65rem 1rem', fontSize: '0.825rem' }}
+                                >
+                                  Batal
+                                </button>
+                                <button
+                                  type="submit"
+                                  disabled={kasirSubmitting}
+                                  className="btn btn-primary"
+                                  style={{ flex: 1, padding: '0.65rem 1rem', fontSize: '0.85rem', fontWeight: 700 }}
+                                >
+                                  {kasirSubmitting ? 'Memproses...' : 'Konfirmasi Lunas'}
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -2852,60 +3013,103 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
           )}
 
           {/* =========================================================================
-              ROLE 3: BIDAN — CLEAN RME SOAP + AUTO-BILLING RESEP OBAT
+              ROLE 3: BIDAN — 2-PANEL CLINICAL RME WORKSPACE + AUTO-BILLING
               ========================================================================= */}
           {currentRole === 'DOKTER' && (
             <div>
-              {rmeTab === 'input' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  {/* 1. Pilih Pasien & Layanan */}
-                  <div className="dash-card">
-                    <div className="dash-grid-3" style={{ alignItems: 'flex-end' }}>
-                      <div>
-                        <label className="dash-label">Pilih Pasien</label>
-                        <select
-                          className="dash-select"
-                          value={selectedRmePatient?.pasien_id || ''}
-                          onChange={(e) => {
-                            const found = registeredPatients.find((p) => p.pasien_id === e.target.value);
-                            if (found) selectPatientForRme(found, false);
-                          }}
-                        >
-                          <option value="">-- Pilih dari Daftar Pasien --</option>
-                          {registeredPatients.map((p) => (
-                            <option key={p.pasien_id} value={p.pasien_id}>
-                              {p.nama} — NIK: {p.nik}
-                            </option>
-                          ))}
-                        </select>
+              {rmeTab === 'input' && (() => {
+                const sortedRmeQueue = [...queueList].sort((a, b) => {
+                  const rank = (st: string) => (st === 'DIPANGGIL' ? 0 : st === 'MENUNGGU' ? 1 : 2);
+                  return rank(a.status) - rank(b.status);
+                });
+
+                const effectiveMode = queueList.length === 0 ? 'pasien' : rmeLeftMode;
+                const filterLower = rmeQueueFilter.toLowerCase().trim();
+
+                const visibleQueueCards = sortedRmeQueue.filter((q) => {
+                  if (!filterLower) return true;
+                  return (
+                    String(q.nama || '').toLowerCase().includes(filterLower) ||
+                    String(q.no || '').toLowerCase().includes(filterLower) ||
+                    String(q.nik || '').includes(filterLower) ||
+                    String(q.layanan || '').toLowerCase().includes(filterLower)
+                  );
+                });
+
+                const visiblePatientCards = registeredPatients.filter((p) => {
+                  if (!filterLower) return true;
+                  return (
+                    String(p.nama || '').toLowerCase().includes(filterLower) ||
+                    String(p.nik || '').includes(filterLower) ||
+                    String(p.no_rm || '').toLowerCase().includes(filterLower)
+                  );
+                });
+
+                const selectedLayananObj = masterLayananList.find((l) => l.layanan_id === rmeLayananId);
+                const autoBillEstimate =
+                  (selectedLayananObj?.harga || 0) +
+                  rmeObatItems.reduce((acc, o) => acc + o.harga_satuan * o.qty, 0);
+
+                return (
+                  <div className="rme-workspace">
+                    {/* LEFT PANEL: 1-CLICK PATIENT QUEUE & DIRECTORY */}
+                    <div className="rme-queue-panel">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                        <div>
+                          <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#111827' }}>Daftar Pasien Periksa</div>
+                          <div style={{ fontSize: '0.72rem', color: '#6b7280' }}>Klik nama pasien untuk isi SOAP</div>
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="dash-label">Cari Berdasarkan NIK (16 Digit)</label>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <input
-                            type="text"
-                            maxLength={16}
-                            className="dash-input"
-                            placeholder="Masukkan 16 digit NIK"
-                            value={rmeSearchNik}
-                            onChange={(e) => setRmeSearchNik(e.target.value.replace(/\D/g, ''))}
-                          />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem', background: '#eef2f6', padding: '0.2rem', borderRadius: '7px', marginBottom: '0.6rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => setRmeLeftMode('antrean')}
+                          style={{
+                            padding: '0.32rem 0.4rem',
+                            borderRadius: '5px',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            background: effectiveMode === 'antrean' ? '#ffffff' : 'transparent',
+                            color: effectiveMode === 'antrean' ? '#111827' : '#6b7280',
+                            boxShadow: effectiveMode === 'antrean' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                          }}
+                        >
+                          Antrean ({queueList.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRmeLeftMode('pasien')}
+                          style={{
+                            padding: '0.32rem 0.4rem',
+                            borderRadius: '5px',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            background: effectiveMode === 'pasien' ? '#ffffff' : 'transparent',
+                            color: effectiveMode === 'pasien' ? '#111827' : '#6b7280',
+                            boxShadow: effectiveMode === 'pasien' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                          }}
+                        >
+                          Semua ({registeredPatients.length})
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <input
+                          type="text"
+                          className="dash-input"
+                          placeholder="Cari nama / No. RM / NIK..."
+                          value={rmeQueueFilter}
+                          onChange={(e) => setRmeQueueFilter(e.target.value)}
+                          style={{ padding: '0.42rem 0.65rem', fontSize: '0.78rem' }}
+                        />
+                        {/^\d{16}$/.test(rmeQueueFilter.trim()) && (
                           <button
                             type="button"
                             className="btn btn-secondary"
-                            style={{ padding: '0.55rem 0.9rem', fontSize: '0.8125rem', flexShrink: 0 }}
+                            style={{ padding: '0.4rem 0.6rem', fontSize: '0.72rem', flexShrink: 0 }}
                             onClick={() => {
-                              const nikClean = rmeSearchNik.trim();
-                              const found = registeredPatients.find((p) => p.nik === nikClean);
-                              if (found) {
-                                selectPatientForRme(found, false);
-                                return;
-                              }
-                              if (nikClean.length !== 16) {
-                                notify('Masukkan 16 digit NIK yang valid.', 'error');
-                                return;
-                              }
+                              const nikClean = rmeQueueFilter.trim();
                               apiClient
                                 .post('/public/pasien/cek', { nik: nikClean })
                                 .then((res) => {
@@ -2921,333 +3125,426 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                       false
                                     );
                                   } else {
-                                    notify('NIK belum ditemukan pada daftar pasien.', 'error');
+                                    notify('NIK belum terdaftar.', 'error');
                                   }
                                 })
-                                .catch(() => notify('Gagal memeriksa NIK pasien.', 'error'));
+                                .catch(() => notify('Gagal memeriksa NIK.', 'error'));
                             }}
                           >
-                            Cari
+                            Cek
                           </button>
-                        </div>
+                        )}
                       </div>
 
-                      <div>
-                        <label className="dash-label">Layanan Pemeriksaan (Otomatis ke Tagihan)</label>
-                        <select
-                          className="dash-select"
-                          value={rmeLayananId}
-                          onChange={(e) => setRmeLayananId(e.target.value)}
-                        >
-                          <option value="">-- Pilih Layanan Medis --</option>
-                          {masterLayananList.map((l) => (
-                            <option key={l.layanan_id} value={l.layanan_id}>
-                              {l.nama}{l.harga > 0 ? ` — Rp ${l.harga.toLocaleString('id-ID')}` : ''}
-                            </option>
-                          ))}
-                        </select>
+                      <div className="rme-queue-list">
+                        {effectiveMode === 'antrean' ? (
+                          visibleQueueCards.length === 0 ? (
+                            <div style={{ padding: '1.5rem 0.75rem', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>
+                              Tidak ada antrean yang cocok.
+                            </div>
+                          ) : (
+                            visibleQueueCards.map((q, idx) => {
+                              const regMatch = registeredPatients.find(
+                                (p) => (q.pasien_id && p.pasien_id === q.pasien_id) || (q.nik && p.nik === q.nik)
+                              );
+                              const isSelected =
+                                selectedRmePatient &&
+                                ((q.pasien_id && selectedRmePatient.pasien_id === q.pasien_id) ||
+                                  (q.nik && selectedRmePatient.nik === q.nik));
+
+                              return (
+                                <button
+                                  key={q.reservasi_id || `${q.no}-${idx}`}
+                                  type="button"
+                                  className={`rme-patient-card ${isSelected ? 'selected' : ''}`}
+                                  onClick={() =>
+                                    selectPatientForRme(
+                                      {
+                                        pasien_id: q.pasien_id || regMatch?.pasien_id || '',
+                                        nama: q.nama,
+                                        nik: q.nik || regMatch?.nik || '-',
+                                        no_rm: regMatch?.no_rm || '-',
+                                        alamat: regMatch?.alamat || 'Kota Jambi',
+                                        layanan_id: q.layanan_id
+                                      },
+                                      false
+                                    )
+                                  }
+                                >
+                                  <div className="tabular-nums" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem', marginBottom: '0.2rem' }}>
+                                    <span style={{ fontWeight: 700, color: q.status === 'DIPANGGIL' ? 'var(--color-primary)' : q.status === 'SELESAI' ? '#059669' : '#4b5563' }}>
+                                      {q.no} &bull; {q.status}
+                                    </span>
+                                    <span style={{ fontFamily: 'monospace', color: '#6b7280' }}>
+                                      {regMatch?.no_rm || ''}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {q.nama}
+                                  </div>
+                                  <div style={{ fontSize: '0.74rem', color: '#6b7280', marginTop: '0.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {q.layanan}
+                                  </div>
+                                </button>
+                              );
+                            })
+                          )
+                        ) : visiblePatientCards.length === 0 ? (
+                          <div style={{ padding: '1.5rem 0.75rem', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>
+                            Pasien tidak ditemukan.
+                          </div>
+                        ) : (
+                          visiblePatientCards.map((p, idx) => {
+                            const isSelected = selectedRmePatient?.pasien_id === p.pasien_id;
+                            return (
+                              <button
+                                key={p.pasien_id || idx}
+                                type="button"
+                                className={`rme-patient-card ${isSelected ? 'selected' : ''}`}
+                                onClick={() => selectPatientForRme(p, false)}
+                              >
+                                <div className="tabular-nums" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#6b7280', marginBottom: '0.15rem' }}>
+                                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--color-primary-dark)' }}>
+                                    {p.no_rm || `RM-${String(idx + 1).padStart(4, '0')}`}
+                                  </span>
+                                  <span style={{ fontFamily: 'monospace' }}>{p.nik}</span>
+                                </div>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {p.nama}
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
                       </div>
                     </div>
 
-                    {selectedRmePatient && (
-                      <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.825rem' }}>
-                        <div>
-                          Pasien Aktif: <strong style={{ color: '#0f172a' }}>{selectedRmePatient.nama}</strong> &bull; No. RM: <strong>{selectedRmePatient.no_rm || '-'}</strong> &bull; NIK: <span style={{ fontFamily: 'monospace' }}>{selectedRmePatient.nik}</span>
-                        </div>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '9999px', background: '#dcfce7', color: '#166534' }}>
-                          Siap Diperiksa
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                    {/* RIGHT PANEL: CLEAN CLINICAL SOAP SHEET */}
+                    <div className="rme-form-panel">
+                      <div>
+                        {/* Active Patient & Inline Service Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', paddingBottom: '1rem', marginBottom: '1.15rem', borderBottom: '1px solid #e5e7eb' }}>
+                          <div>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>
+                              {selectedRmePatient ? selectedRmePatient.nama : 'Pilih Pasien di Panel Kiri'}
+                            </div>
+                            <div className="tabular-nums" style={{ fontSize: '0.76rem', color: '#6b7280', fontFamily: 'monospace', marginTop: '0.15rem' }}>
+                              {selectedRmePatient
+                                ? `RM: ${selectedRmePatient.no_rm || '-'} • NIK: ${selectedRmePatient.nik || '-'}`
+                                : 'Klik salah satu pasien dari daftar antrean untuk memulai pencatatan SOAP'}
+                            </div>
+                          </div>
 
-                  {/* 2. Tanda Vital & Obstetri + SOAP Form */}
-                  <div className="dash-card">
-                    <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.85rem' }}>
-                      Tanda Vital &amp; Pemeriksaan Obstetri
-                    </h3>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <select
+                              className="dash-select"
+                              style={{ width: 'auto', minWidth: '220px', padding: '0.4rem 0.65rem', fontSize: '0.78rem' }}
+                              value={rmeLayananId}
+                              onChange={(e) => setRmeLayananId(e.target.value)}
+                            >
+                              <option value="">-- Layanan Pemeriksaan --</option>
+                              {masterLayananList.map((l) => (
+                                <option key={l.layanan_id} value={l.layanan_id}>
+                                  {l.nama}{l.harga > 0 ? ` (Rp ${l.harga.toLocaleString('id-ID')})` : ''}
+                                </option>
+                              ))}
+                            </select>
 
-                    <div className="dash-vitals-grid" style={{ marginBottom: '1.5rem' }}>
-                      <div>
-                        <label className="dash-label">TD Sistolik (mmHg) *</label>
-                        <input
-                          type="number"
-                          className="dash-input"
-                          placeholder="120"
-                          value={rmeForm.tekanan_darah_sistolik}
-                          onChange={(e) => setRmeForm({ ...rmeForm, tekanan_darah_sistolik: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="dash-label">TD Diastolik (mmHg) *</label>
-                        <input
-                          type="number"
-                          className="dash-input"
-                          placeholder="80"
-                          value={rmeForm.tekanan_darah_diastolik}
-                          onChange={(e) => setRmeForm({ ...rmeForm, tekanan_darah_diastolik: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="dash-label">Berat Badan (kg)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          className="dash-input"
-                          placeholder="60"
-                          value={rmeForm.berat_badan}
-                          onChange={(e) => setRmeForm({ ...rmeForm, berat_badan: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="dash-label">Usia Hamil (Minggu)</label>
-                        <input
-                          type="text"
-                          className="dash-input"
-                          placeholder="28"
-                          value={rmeForm.usia_kehamilan}
-                          onChange={(e) => setRmeForm({ ...rmeForm, usia_kehamilan: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="dash-label">Tinggi Fundus (cm)</label>
-                        <input
-                          type="number"
-                          className="dash-input"
-                          placeholder="24"
-                          value={rmeForm.tinggi_fundus}
-                          onChange={(e) => setRmeForm({ ...rmeForm, tinggi_fundus: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="dash-label">DJJ (dpm)</label>
-                        <input
-                          type="number"
-                          className="dash-input"
-                          placeholder="142"
-                          value={rmeForm.djj}
-                          onChange={(e) => setRmeForm({ ...rmeForm, djj: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="dash-label">Presentasi Janin</label>
-                        <input
-                          type="text"
-                          className="dash-input"
-                          placeholder="Kepala"
-                          value={rmeForm.presentasi}
-                          onChange={(e) => setRmeForm({ ...rmeForm, presentasi: e.target.value })}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1.25rem', marginBottom: '1.25rem' }}>
-                      <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.85rem' }}>
-                        Catatan Klinis SOAP
-                      </h3>
-
-                      <datalist id="rekomendasi-diagnosa-icd10">
-                        <option value="Z34.8 - Pengawasan Kehamilan Normal" />
-                        <option value="Z35.9 - Pengawasan Kehamilan Risiko Tinggi" />
-                        <option value="O80 - Persalinan Tunggal Spontan" />
-                        <option value="Z39.2 - Perawatan Masa Nifas Rutin" />
-                        <option value="Z30.0 - Konseling & Pelayanan Kontrasepsi (KB)" />
-                        <option value="Z76.2 - Pemantauan Tumbuh Kembang Bayi Sehat" />
-                      </datalist>
-
-                      <div className="dash-grid-2" style={{ marginBottom: '1rem' }}>
-                        <div>
-                          <label className="dash-label">S — Subjektif (Keluhan Pasien) *</label>
-                          <textarea
-                            rows={3}
-                            className="dash-textarea"
-                            placeholder="Keluhan utama dan riwayat singkat yang disampaikan pasien..."
-                            value={rmeForm.keluhan}
-                            onChange={(e) => setRmeForm({ ...rmeForm, keluhan: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <label className="dash-label">O — Objektif (Pemeriksaan Fisik)</label>
-                          <textarea
-                            rows={3}
-                            className="dash-textarea"
-                            placeholder="Keadaan umum, konjungtiva, edema, pemeriksaan obstetri..."
-                            value={rmeForm.pemeriksaan_fisik}
-                            onChange={(e) => setRmeForm({ ...rmeForm, pemeriksaan_fisik: e.target.value })}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="dash-grid-2">
-                        <div>
-                          <label className="dash-label">A — Asesmen (Diagnosa Kebidanan) *</label>
-                          <input
-                            type="text"
-                            list="rekomendasi-diagnosa-icd10"
-                            className="dash-input"
-                            style={{ marginBottom: '0.5rem' }}
-                            placeholder="Kode ICD-10 (opsional, cth: Z34.8)"
-                            value={rmeForm.kode_icd10}
-                            onChange={(e) => setRmeForm({ ...rmeForm, kode_icd10: e.target.value })}
-                          />
-                          <textarea
-                            rows={3}
-                            className="dash-textarea"
-                            placeholder="Contoh: G2P1A0 hamil 28 minggu, janin tunggal hidup intrauterin..."
-                            value={rmeForm.diagnosa}
-                            onChange={(e) => setRmeForm({ ...rmeForm, diagnosa: e.target.value })}
-                          />
+                            <span style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600, background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', whiteSpace: 'nowrap' }}>
+                              Ruang Periksa 1
+                            </span>
+                          </div>
                         </div>
 
-                        <div>
-                          <label className="dash-label">P — Plan (Tindakan &amp; Instruksi Terapi) *</label>
-                          <textarea
-                            rows={5}
-                            className="dash-textarea"
-                            placeholder="Rencana asuhan, tindakan medis yang diberikan, serta aturan pakai obat..."
-                            value={rmeForm.tindakan_resep}
-                            onChange={(e) => setRmeForm({ ...rmeForm, tindakan_resep: e.target.value })}
-                          />
+                        {/* Compact 1-Row Vital Signs Strip */}
+                        <div className="rme-vital-strip" style={{ marginBottom: '1.15rem' }}>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.72rem' }}>Sistolik *</label>
+                            <input
+                              type="number"
+                              className="dash-input tabular-nums"
+                              style={{ padding: '0.45rem 0.6rem', fontSize: '0.825rem', fontWeight: 600 }}
+                              placeholder="120"
+                              value={rmeForm.tekanan_darah_sistolik}
+                              onChange={(e) => setRmeForm({ ...rmeForm, tekanan_darah_sistolik: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.72rem' }}>Diastolik *</label>
+                            <input
+                              type="number"
+                              className="dash-input tabular-nums"
+                              style={{ padding: '0.45rem 0.6rem', fontSize: '0.825rem', fontWeight: 600 }}
+                              placeholder="80"
+                              value={rmeForm.tekanan_darah_diastolik}
+                              onChange={(e) => setRmeForm({ ...rmeForm, tekanan_darah_diastolik: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.72rem' }}>BB (kg)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              className="dash-input tabular-nums"
+                              style={{ padding: '0.45rem 0.6rem', fontSize: '0.825rem', fontWeight: 600 }}
+                              placeholder="60"
+                              value={rmeForm.berat_badan}
+                              onChange={(e) => setRmeForm({ ...rmeForm, berat_badan: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.72rem' }}>UK (mgg)</label>
+                            <input
+                              type="text"
+                              className="dash-input tabular-nums"
+                              style={{ padding: '0.45rem 0.6rem', fontSize: '0.825rem', fontWeight: 600 }}
+                              placeholder="28"
+                              value={rmeForm.usia_kehamilan}
+                              onChange={(e) => setRmeForm({ ...rmeForm, usia_kehamilan: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.72rem' }}>TFU (cm)</label>
+                            <input
+                              type="number"
+                              className="dash-input tabular-nums"
+                              style={{ padding: '0.45rem 0.6rem', fontSize: '0.825rem', fontWeight: 600 }}
+                              placeholder="24"
+                              value={rmeForm.tinggi_fundus}
+                              onChange={(e) => setRmeForm({ ...rmeForm, tinggi_fundus: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.72rem' }}>DJJ (dpm)</label>
+                            <input
+                              type="number"
+                              className="dash-input tabular-nums"
+                              style={{ padding: '0.45rem 0.6rem', fontSize: '0.825rem', fontWeight: 600 }}
+                              placeholder="142"
+                              value={rmeForm.djj}
+                              onChange={(e) => setRmeForm({ ...rmeForm, djj: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.72rem' }}>Presentasi</label>
+                            <input
+                              type="text"
+                              className="dash-input"
+                              style={{ padding: '0.45rem 0.6rem', fontSize: '0.825rem' }}
+                              placeholder="Kepala"
+                              value={rmeForm.presentasi}
+                              onChange={(e) => setRmeForm({ ...rmeForm, presentasi: e.target.value })}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Clean 2x2 SOAP Grid */}
+                        <datalist id="rekomendasi-diagnosa-icd10">
+                          <option value="Z34.8 - Pengawasan Kehamilan Normal" />
+                          <option value="Z35.9 - Pengawasan Kehamilan Risiko Tinggi" />
+                          <option value="O80 - Persalinan Tunggal Spontan" />
+                          <option value="Z39.2 - Perawatan Masa Nifas Rutin" />
+                          <option value="Z30.0 - Konseling & Pelayanan Kontrasepsi (KB)" />
+                          <option value="Z76.2 - Pemantauan Tumbuh Kembang Bayi Sehat" />
+                        </datalist>
+
+                        <div className="dash-grid-2" style={{ gap: '0.85rem', marginBottom: '0.85rem' }}>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.78rem' }}>S — Subjektif (Keluhan) *</label>
+                            <textarea
+                              rows={2}
+                              className="dash-textarea"
+                              style={{ fontSize: '0.825rem', padding: '0.55rem 0.7rem' }}
+                              placeholder="Keluhan pasien saat ini..."
+                              value={rmeForm.keluhan}
+                              onChange={(e) => setRmeForm({ ...rmeForm, keluhan: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.78rem' }}>O — Objektif (Fisik)</label>
+                            <textarea
+                              rows={2}
+                              className="dash-textarea"
+                              style={{ fontSize: '0.825rem', padding: '0.55rem 0.7rem' }}
+                              placeholder="Keadaan umum, konjungtiva, edema..."
+                              value={rmeForm.pemeriksaan_fisik}
+                              onChange={(e) => setRmeForm({ ...rmeForm, pemeriksaan_fisik: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', gap: '0.5rem' }}>
+                              <label className="dash-label" style={{ fontSize: '0.78rem', margin: 0 }}>A — Asesmen (Diagnosa) *</label>
+                              <input
+                                type="text"
+                                list="rekomendasi-diagnosa-icd10"
+                                className="dash-input"
+                                style={{ width: '165px', padding: '0.22rem 0.5rem', fontSize: '0.72rem' }}
+                                placeholder="ICD-10 (opsional)"
+                                value={rmeForm.kode_icd10}
+                                onChange={(e) => setRmeForm({ ...rmeForm, kode_icd10: e.target.value })}
+                              />
+                            </div>
+                            <textarea
+                              rows={2}
+                              className="dash-textarea"
+                              style={{ fontSize: '0.825rem', padding: '0.55rem 0.7rem' }}
+                              placeholder="Contoh: G2P1A0 hamil 28 minggu, janin tunggal hidup..."
+                              value={rmeForm.diagnosa}
+                              onChange={(e) => setRmeForm({ ...rmeForm, diagnosa: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="dash-label" style={{ fontSize: '0.78rem' }}>P — Plan (Tindakan &amp; Terapi) *</label>
+                            <textarea
+                              rows={2}
+                              className="dash-textarea"
+                              style={{ fontSize: '0.825rem', padding: '0.55rem 0.7rem' }}
+                              placeholder="Rencana tindakan, aturan pakai obat, dan anjuran..."
+                              value={rmeForm.tindakan_resep}
+                              onChange={(e) => setRmeForm({ ...rmeForm, tindakan_resep: e.target.value })}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Compact Medicine Adder & Protocol Bar */}
+                        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '0.85rem', marginBottom: '1rem' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginRight: '0.25rem' }}>
+                              Resep Obat:
+                            </span>
+                            <select
+                              className="dash-select"
+                              style={{ flex: '1 1 200px', padding: '0.4rem 0.6rem', fontSize: '0.78rem' }}
+                              value={rmePickObatId}
+                              onChange={(e) => setRmePickObatId(e.target.value)}
+                            >
+                              <option value="">-- Pilih Obat / Suplemen (Opsional) --</option>
+                              {masterObatList.map((o) => (
+                                <option key={o.obat_id} value={o.obat_id}>
+                                  {o.nama_generik}{o.harga_jual > 0 ? ` — Rp ${o.harga_jual.toLocaleString('id-ID')}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              min="1"
+                              className="dash-input tabular-nums"
+                              style={{ width: '72px', padding: '0.4rem 0.5rem', fontSize: '0.78rem' }}
+                              placeholder="Qty"
+                              value={rmePickObatQty}
+                              onChange={(e) => setRmePickObatQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                            />
+                            <button
+                              type="button"
+                              disabled={!rmePickObatId}
+                              onClick={handleAddRmeObat}
+                              className="btn btn-secondary"
+                              style={{ padding: '0.42rem 0.8rem', fontSize: '0.75rem', borderRadius: '6px' }}
+                            >
+                              + Obat
+                            </button>
+                          </div>
+
+                          {rmeObatItems.length > 0 && (
+                            <div style={{ marginTop: '0.6rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                              {rmeObatItems.map((item) => (
+                                <span
+                                  key={item.obat_id}
+                                  className="tabular-nums"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.45rem',
+                                    padding: '0.25rem 0.6rem',
+                                    borderRadius: '6px',
+                                    background: '#ffffff',
+                                    border: '1px solid #d1d5db',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    color: '#111827'
+                                  }}
+                                >
+                                  <span>
+                                    {item.nama} ({item.qty}x &bull; Rp {(item.harga_satuan * item.qty).toLocaleString('id-ID')})
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setRmeObatItems((prev) => prev.filter((x) => x.obat_id !== item.obat_id))}
+                                    style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.9rem', lineHeight: 1 }}
+                                    aria-label="Hapus obat"
+                                  >
+                                    &times;
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="dash-grid-3" style={{ gap: '0.65rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                            <div>
+                              <label className="dash-label" style={{ fontSize: '0.72rem' }}>Protokol Tambahan</label>
+                              <select
+                                className="dash-select"
+                                style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem' }}
+                                value={rmeForm.protokol_tambahan}
+                                onChange={(e) => setRmeForm({ ...rmeForm, protokol_tambahan: e.target.value })}
+                              >
+                                <option value="">Tidak Ada</option>
+                                <option value="Edukasi Tanda Bahaya Kehamilan">Edukasi Tanda Bahaya</option>
+                                <option value="Inisiasi Menyusu Dini (IMD)">Inisiasi Menyusu Dini (IMD)</option>
+                                <option value="Injeksi Vitamin K1 (1 mg IM)">Injeksi Vitamin K1</option>
+                                <option value="Salep Mata Antibiotik Gentamisin">Salep Mata Gentamisin</option>
+                                <option value="Paket Asuhan BBL Lengkap (IMD, Vit K1, Salep Mata)">Paket BBL Lengkap</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="dash-label" style={{ fontSize: '0.72rem' }}>Catatan Edukasi</label>
+                              <input
+                                type="text"
+                                className="dash-input"
+                                style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem' }}
+                                placeholder="Nutrisi, istirahat..."
+                                value={rmeForm.catatan_edukasi}
+                                onChange={(e) => setRmeForm({ ...rmeForm, catatan_edukasi: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label className="dash-label" style={{ fontSize: '0.72rem' }}>Kontrol Ulang</label>
+                              <input
+                                type="date"
+                                className="dash-input tabular-nums"
+                                style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem' }}
+                                value={rmeForm.tgl_kontrol_ulang}
+                                onChange={(e) => setRmeForm({ ...rmeForm, tgl_kontrol_ulang: e.target.value })}
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Resep Obat Terintegrasi ke Tagihan Kasir */}
-                    <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1.25rem', marginBottom: '1.25rem' }}>
-                      <label className="dash-label" style={{ marginBottom: '0.5rem' }}>
-                        Resep Obat / Vitamin (Otomatis Masuk ke Rincian Tagihan Kasir)
-                      </label>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                        <select
-                          className="dash-select"
-                          style={{ flex: '1 1 240px' }}
-                          value={rmePickObatId}
-                          onChange={(e) => setRmePickObatId(e.target.value)}
-                        >
-                          <option value="">-- Pilih Obat / Alkes (Opsional) --</option>
-                          {masterObatList.map((o) => (
-                            <option key={o.obat_id} value={o.obat_id}>
-                              {o.nama_generik}{o.harga_jual > 0 ? ` — Rp ${o.harga_jual.toLocaleString('id-ID')}` : ''}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          min="1"
-                          className="dash-input"
-                          style={{ width: '90px' }}
-                          placeholder="Qty"
-                          value={rmePickObatQty}
-                          onChange={(e) => setRmePickObatQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                        />
+                      {/* Bottom Auto-Billing Action Footer */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', paddingTop: '0.9rem', borderTop: '1px solid #e5e7eb' }}>
+                        <div className="tabular-nums" style={{ fontSize: '0.8rem', color: '#4b5563' }}>
+                          Tagihan Otomatis ke Kasir:{' '}
+                          <strong style={{ color: '#111827', fontSize: '0.95rem' }}>
+                            Rp {autoBillEstimate.toLocaleString('id-ID')}
+                          </strong>
+                        </div>
+
                         <button
                           type="button"
-                          disabled={!rmePickObatId}
-                          onClick={handleAddRmeObat}
-                          className="btn btn-secondary"
-                          style={{ padding: '0.6rem 1rem', fontSize: '0.8125rem' }}
+                          disabled={isSavingRme}
+                          onClick={handleSaveRme}
+                          className="btn btn-primary"
+                          style={{ padding: '0.65rem 1.35rem', fontSize: '0.825rem', fontWeight: 700, borderRadius: '8px' }}
                         >
-                          + Tambah Obat
+                          {isSavingRme ? 'Menyimpan Pemeriksaan...' : 'Simpan RME & Kirim ke Kasir'}
                         </button>
                       </div>
-
-                      {rmeObatItems.length > 0 && (
-                        <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                          {rmeObatItems.map((item) => (
-                            <span
-                              key={item.obat_id}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.5rem',
-                                padding: '0.35rem 0.7rem',
-                                borderRadius: '8px',
-                                background: '#f8fafc',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '0.8rem',
-                                fontWeight: 600
-                              }}
-                            >
-                              <span>
-                                {item.nama} ({item.qty}x &bull; Rp {(item.harga_satuan * item.qty).toLocaleString('id-ID')})
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => setRmeObatItems((prev) => prev.filter((x) => x.obat_id !== item.obat_id))}
-                                style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.95rem', lineHeight: 1 }}
-                                aria-label="Hapus obat"
-                              >
-                                &times;
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Tindak Lanjut & Dropdown Protokol Tambahan (Clean, menggantikan kotak ungu) */}
-                    <div className="dash-grid-3" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1.25rem', marginBottom: '1.5rem' }}>
-                      <div>
-                        <label className="dash-label">Protokol Tambahan (Opsional)</label>
-                        <select
-                          className="dash-select"
-                          value={rmeForm.protokol_tambahan}
-                          onChange={(e) => setRmeForm({ ...rmeForm, protokol_tambahan: e.target.value })}
-                        >
-                          <option value="">Tidak Ada</option>
-                          <option value="Edukasi Tanda Bahaya Kehamilan">Edukasi Tanda Bahaya Kehamilan</option>
-                          <option value="Inisiasi Menyusu Dini (IMD)">Inisiasi Menyusu Dini (IMD)</option>
-                          <option value="Injeksi Vitamin K1 (1 mg IM)">Injeksi Vitamin K1 (1 mg IM)</option>
-                          <option value="Salep Mata Antibiotik Gentamisin">Salep Mata Antibiotik Gentamisin</option>
-                          <option value="Paket Asuhan BBL Lengkap (IMD, Vit K1, Salep Mata)">Paket Asuhan BBL Lengkap</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="dash-label">Catatan Edukasi Pasien</label>
-                        <input
-                          type="text"
-                          className="dash-input"
-                          placeholder="Nutrisi, pola istirahat, persiapan persalinan..."
-                          value={rmeForm.catatan_edukasi}
-                          onChange={(e) => setRmeForm({ ...rmeForm, catatan_edukasi: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="dash-label">Jadwal Kontrol Ulang</label>
-                        <input
-                          type="date"
-                          className="dash-input"
-                          value={rmeForm.tgl_kontrol_ulang}
-                          onChange={(e) => setRmeForm({ ...rmeForm, tgl_kontrol_ulang: e.target.value })}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                        Estimasi Tagihan Otomatis:{' '}
-                        <strong style={{ color: '#0f172a' }}>
-                          Rp{' '}
-                          {(
-                            (masterLayananList.find((l) => l.layanan_id === rmeLayananId)?.harga || 0) +
-                            rmeObatItems.reduce((acc, o) => acc + o.harga_satuan * o.qty, 0)
-                          ).toLocaleString('id-ID')}
-                        </strong>
-                      </span>
-
-                      <button
-                        type="button"
-                        disabled={isSavingRme}
-                        onClick={handleSaveRme}
-                        className="btn btn-primary"
-                        style={{ padding: '0.75rem 1.5rem', fontWeight: 700 }}
-                      >
-                        {isSavingRme ? 'Menyimpan Pemeriksaan...' : 'Simpan RME & Terbitkan Tagihan'}
-                      </button>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {rmeTab === 'riwayat' && (
                 <div className="dash-card" style={{ padding: 0, overflow: 'hidden' }}>

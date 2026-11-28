@@ -155,6 +155,34 @@ describe('KeuanganService', () => {
     expect(repo.updatePembayaranTagihan).toHaveBeenCalledWith('tagihan-1', 250, 'BELUM_LUNAS');
   });
 
+  test('bayar metode BPJS mengklaim penuh seluruh tagihan tanpa error', async () => {
+    const repoWithBpjs = {
+      ...repo,
+      ensureBpjsSupport: jest.fn().mockResolvedValue(undefined),
+      findPenjaminBpjs: jest.fn().mockResolvedValue('penjamin-bpjs')
+    };
+    const svcBpjs = new KeuanganService(repoWithBpjs as unknown as KeuanganRepository);
+    repoWithBpjs.findTagihan.mockResolvedValue({ total_tagihan: 175000, total_dibayar: 0 });
+    repoWithBpjs.updatePembayaranTagihan.mockResolvedValue({ tagihan_id: 'tagihan-bpjs', status: 'LUNAS' });
+
+    const hasil = await svcBpjs.bayar(
+      'tagihan-bpjs',
+      { jumlah: 175000, metode: 'BPJS', jenis: 'PELUNASAN' },
+      'staf-kasir'
+    );
+
+    expect(repoWithBpjs.ensureBpjsSupport).toHaveBeenCalled();
+    expect(repoWithBpjs.createPembayaran).toHaveBeenCalledWith({
+      tagihanId: 'tagihan-bpjs',
+      penjaminId: 'penjamin-bpjs',
+      kasirStafId: 'staf-kasir',
+      jumlah: 175000,
+      metode: 'BPJS',
+      jenis: 'PELUNASAN'
+    });
+    expect(hasil).toEqual({ tagihan_id: 'tagihan-bpjs', status: 'LUNAS' });
+  });
+
   test('list menolak periode terbalik dengan ERR-VAL-01', () => {
     const err = ambilErrorSync(() => service.list({ dari: '2026-02-01', sampai: '2026-01-01' }));
     expect(err).toMatchObject({ statusCode: 422, errorId: 'ERR-VAL-01' });

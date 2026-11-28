@@ -4,7 +4,7 @@ import { requireProfiles } from '../../middleware/rbac';
 import { validate } from './_validate';
 import { defineRoute } from './_registry';
 import { emptyBodySchema, idParams } from '../../validation/common';
-import { ADMIN_LOKAL, P, PIMPINAN } from '../../auth/profiles';
+import { ADMIN_LOKAL, P } from '../../auth/profiles';
 import { kontenSchema, kontenUpdateSchema, periodeSchema } from '../../validation/laporan';
 import {
   createKonten,
@@ -23,6 +23,8 @@ import {
 
 const router = Router();
 
+// Spesifikasi Bagian B, D, & E: Laporan Operasional & Analisis Efek Harga HANYA untuk Bidan (DOKTER).
+const ONLY_BIDAN = [P.DOKTER] as const;
 const NOTIFIKASI = [P.SUPERADMIN, P.ADMIN_LOKAL, P.RESEPSIONIS];
 
 const registerPeriode = (
@@ -41,10 +43,10 @@ const registerPeriode = (
   );
 };
 
-registerPeriode('post', '/laporan/ringkasan/list', PIMPINAN, ringkasan);
-registerPeriode('post', '/laporan/tren-layanan/list', PIMPINAN, trenLayanan);
-registerPeriode('post', '/laporan/perbandingan/list', ADMIN_LOKAL, perbandingan);
-registerPeriode('post', '/laporan/export', PIMPINAN, exportLaporan);
+registerPeriode('post', '/laporan/ringkasan/list', ONLY_BIDAN, ringkasan);
+registerPeriode('post', '/laporan/tren-layanan/list', ONLY_BIDAN, trenLayanan);
+registerPeriode('post', '/laporan/perbandingan/list', ONLY_BIDAN, perbandingan);
+registerPeriode('post', '/laporan/export', ONLY_BIDAN, exportLaporan);
 
 defineRoute(
   router,
@@ -52,11 +54,11 @@ defineRoute(
     method: 'post',
     path: '/laporan/jam-tersibuk/list',
     auth: true,
-    profiles: PIMPINAN,
+    profiles: ONLY_BIDAN,
     schemas: { body: emptyBodySchema }
   },
   authenticate,
-  requireProfiles(...PIMPINAN),
+  requireProfiles(...ONLY_BIDAN),
   validate({ body: emptyBodySchema }),
   jamTersibuk
 );

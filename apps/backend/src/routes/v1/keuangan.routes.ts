@@ -5,13 +5,14 @@ import { validate } from './_validate';
 import { defineRoute } from './_registry';
 import { emptyBodySchema, idParams } from '../../validation/common';
 import { ADMIN_LOKAL, KASIR, P } from '../../auth/profiles';
-import { bayarSchema, hargaSchema, refParams, tagihanListSchema } from '../../validation/keuangan';
+import { bayarSchema, hargaSchema, refParams, rekapPendapatanSchema, tagihanListSchema } from '../../validation/keuangan';
 import {
   bayar,
   detailTagihan,
   listHarga,
   listTagihan,
   rekap,
+  rekapPendapatan,
   riwayatHarga,
   setHarga
 } from '../../controllers/keuangan.controller';
@@ -78,6 +79,21 @@ defineRoute(
   requireProfiles(...HARGA_BACA),
   validate({ body: tagihanListSchema }),
   rekap
+);
+
+defineRoute(
+  router,
+  {
+    method: 'post',
+    path: '/keuangan/rekap-pendapatan/list',
+    auth: true,
+    profiles: HARGA_BACA,
+    schemas: { body: rekapPendapatanSchema }
+  },
+  authenticate,
+  requireProfiles(...HARGA_BACA),
+  validate({ body: rekapPendapatanSchema }),
+  rekapPendapatan
 );
 
 defineRoute(

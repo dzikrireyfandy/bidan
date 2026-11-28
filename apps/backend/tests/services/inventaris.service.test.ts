@@ -89,6 +89,24 @@ describe('InventarisService', () => {
     expect(hasil).toEqual({ obat_id: 'obat-1' });
   });
 
+  test('createObat dengan harga_jual mencatat ke riwayat harga obat terbaru', async () => {
+    const repoWithHarga = {
+      ...repo,
+      insertHargaAwalObat: jest.fn().mockResolvedValue(undefined)
+    };
+    const svcHarga = new InventarisService(repoWithHarga as unknown as InventarisRepository);
+    repoWithHarga.createObat.mockResolvedValue({ obat_id: 'obat-baru-1' });
+
+    await svcHarga.createObat({ ...obatBody, harga_jual: 15000 }, 'staf-farmasi');
+
+    expect(repoWithHarga.insertHargaAwalObat).toHaveBeenCalledWith({
+      obatId: 'obat-baru-1',
+      stafId: 'staf-farmasi',
+      hargaJual: 15000,
+      alasan: 'Harga awal penambahan item baru'
+    });
+  });
+
   test('updateObat menolak body kosong dengan ERR-VAL-01', async () => {
     const err = await ambilError(service.updateObat('obat-1', {}));
 

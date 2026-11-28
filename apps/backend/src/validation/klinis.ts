@@ -81,9 +81,19 @@ export const kbSchema = z.object({
   efek_samping: z.string().max(255).optional()
 });
 
+export const diagnosaTambahanRmeSchema = z.object({
+  diagnosa_id: uuidSchema.optional(),
+  kode_icd: z.string().max(30).optional(),
+  nama: z.string().min(1).max(100),
+  jenis: z.enum(['UTAMA', 'SEKUNDER', 'KOMPLIKASI']).default('SEKUNDER'),
+  keterangan: z.string().max(255).optional()
+});
+
 export const rmeSimpanSchema = z.object({
   pasien_id: uuidSchema,
   kunjungan_id: uuidSchema.optional(),
+  koreksi_dari_id: uuidSchema.optional(),
+  reservasi_id: uuidSchema.optional(),
   staf_id: uuidSchema.optional(),
   keluhan: z.string().min(1, 'Keluhan wajib diisi'),
   pemeriksaan_fisik: z.string().optional().default(''),
@@ -99,18 +109,24 @@ export const rmeSimpanSchema = z.object({
   djj: z.coerce.number().optional(),
   tinggi_fundus: z.coerce.number().optional(),
   usia_kehamilan: z.string().optional(),
+  diagnosa_id: uuidSchema.optional(),
   diagnosa: z.string().optional(),
-  kode_icd10: z.string().optional(),
+  kode_icd10: z.string().max(30).optional(),
+  diagnosa_tambahan: z.array(diagnosaTambahanRmeSchema).optional().default([]),
   tindakan_resep: z.string().optional(),
   protokol_tambahan: z.string().optional(),
   catatan_edukasi: z.string().optional(),
   tgl_kontrol_ulang: z.string().optional(),
   layanan_id: uuidSchema.optional(),
+  layanan_ids: z.array(uuidSchema).optional().default([]),
+  override_alergi: z.boolean().optional().default(false),
+  alasan_override: z.string().max(500).optional(),
   resep_obat: z
     .array(
       z.object({
         obat_id: uuidSchema,
         qty: z.coerce.number().int().min(1).default(1),
+        aturan_pakai: z.string().max(255).optional().default('Sesuai anjuran bidan'),
         harga_satuan: z.coerce.number().min(0).optional()
       })
     )

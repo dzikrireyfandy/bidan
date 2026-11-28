@@ -11,6 +11,7 @@ EXEC sp_set_session_context N'keterangan', @__audit_keterangan;
 
 export class SqlConnection {
   #pool: sql.ConnectionPool | null;
+  #connecting: Promise<sql.ConnectionPool> | null;
   #config: sql.config;
 
   constructor() {
@@ -31,20 +32,30 @@ export class SqlConnection {
       }
     };
     this.#pool = null;
+    this.#connecting = null;
   }
 
   async connect(): Promise<sql.ConnectionPool> {
     if (this.#pool && this.#pool.connected) {
       return this.#pool;
     }
-    try {
-      this.#pool = new sql.ConnectionPool(this.#config);
-      await this.#pool.connect();
-      return this.#pool;
-    } catch (err) {
-      this.#pool = null;
-      throw err;
+    if (this.#connecting) {
+      return this.#connecting;
     }
+    this.#connecting = (async () => {
+      try {
+        const nextPool = new sql.ConnectionPool(this.#config);
+        await nextPool.connect();
+        this.#pool = nextPool;
+        return nextPool;
+      } catch (err) {
+        this.#pool = null;
+        throw err;
+      } finally {
+        this.#connecting = null;
+      }
+    })();
+    return this.#connecting;
   }
 
   // ponytail: tabel ber-trigger audit menolak OUTPUT tanpa INTO (SQL error 334),
@@ -141,6 +152,22 @@ export class SqlConnection {
       await transaction.rollback();
       throw err;
     }
+  }
+
+  async queryInTx<T>(
+    tx: sql.Transaction,
+    text: string,
+    params: Record<string, unknown> = {},
+    context?: AuditContext
+  ): Promise<sql.IResult<T>> {
+    const request = new sql.Request(tx);
+    const statement = /OUTPUT\s+(?:INSERTED|DELETED)\./i.test(text) ? await this.#rewriteOutput(text) : text;
+    this.#applyAuditContext(request, context);
+
+    for (const [key, value] of Object.entries(params)) {
+      request.input(key, value);
+    }
+    return request.query<T>(AUDIT_PREFIX + statement);
   }
 
   async close(): Promise<void> {

@@ -55,6 +55,14 @@ export const paginate = (value: unknown, fallback: number, max: number): number 
   return Math.min(Math.trunc(parsed), max);
 };
 
+export const hitungPanjangHariInklusif = (dariIso: string, sampaiIso: string): number => {
+  const [dy = 0, dm = 1, dd = 1] = dariIso.split('-').map(Number);
+  const [sy = 0, sm = 1, sd = 1] = sampaiIso.split('-').map(Number);
+  const dariUtc = Date.UTC(dy, dm - 1, dd);
+  const sampaiUtc = Date.UTC(sy, sm - 1, sd);
+  return Math.round((sampaiUtc - dariUtc) / 86_400_000) + 1;
+};
+
 export const periodRange = (value: { dari?: string | null; sampai?: string | null }): void => {
   if (value.dari && value.sampai && value.dari > value.sampai) {
     throw ApiError.validation('Validasi periode gagal', [
@@ -62,10 +70,8 @@ export const periodRange = (value: { dari?: string | null; sampai?: string | nul
     ]);
   }
   if (value.dari && value.sampai) {
-    const dari = new Date(value.dari);
-    const sampai = new Date(value.sampai);
-    const days = (sampai.getTime() - dari.getTime()) / 86_400_000;
-    if (days > 366) {
+    const inclusiveDays = hitungPanjangHariInklusif(value.dari, value.sampai);
+    if (inclusiveDays > 366) {
       throw ApiError.validation('Validasi periode gagal', [
         { path: ['sampai'], message: 'Rentang periode maksimal 366 hari' }
       ]);

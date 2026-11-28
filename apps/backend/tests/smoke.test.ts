@@ -38,8 +38,8 @@ app.use(errorHandler);
 describe('Smoke 126 endpoint', () => {
   const registry = getRouteRegistry();
 
-  test('seluruh endpoint terdaftar tepat 129', () => {
-    expect(registry).toHaveLength(129);
+  test('seluruh endpoint terdaftar sinkron (133 rute)', () => {
+    expect(registry).toHaveLength(133);
   });
 
   test.each(registry.map((meta) => [meta.method.toUpperCase(), meta.path, meta.auth] as const))(

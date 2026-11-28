@@ -68,6 +68,20 @@ export class InventarisService {
       }
     }
 
+    if (
+      body.harga_jual &&
+      body.harga_jual > 0 &&
+      row.obat_id &&
+      typeof this.repository.insertHargaAwalObat === 'function'
+    ) {
+      await this.repository.insertHargaAwalObat({
+        obatId: String(row.obat_id),
+        stafId,
+        hargaJual: body.harga_jual,
+        alasan: body.alasan_harga || 'Harga awal penambahan item baru'
+      });
+    }
+
     return row;
   }
 

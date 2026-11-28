@@ -17,7 +17,9 @@ export const obatSchema = z.object({
   golongan: z.string().trim().max(30).optional(),
   stok_minimum: z.coerce.number().int().min(0).default(0),
   stok_awal: z.coerce.number().int().min(0).optional(),
-  stok_saat_ini: z.coerce.number().int().min(0).optional()
+  stok_saat_ini: z.coerce.number().int().min(0).optional(),
+  harga_jual: z.coerce.number().min(0).optional(),
+  alasan_harga: z.string().trim().max(255).optional()
 });
 
 export const obatUpdateSchema = z.object({

@@ -76,8 +76,13 @@ apiClient.interceptors.response.use(
     const isAuthEndpoint = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register');
     if (error.response && error.response.status === 401 && !isAuthEndpoint) {
       session.bersihkan();
-      if (window.location.pathname.startsWith('/app')) {
-        window.location.href = '/login';
+      try {
+        window.history.replaceState({}, '', '/login');
+        window.dispatchEvent(new CustomEvent('bidan:unauthorized'));
+      } catch {
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);

@@ -21,6 +21,7 @@ import bcrypt from 'bcryptjs';
 import { AuthService } from '../../src/services/auth.service';
 import type AuthRepository from '../../src/repositories/auth.repository';
 import { sendMail } from '../../src/jobs/mailer';
+import { renderOtpEmailHtml, renderPengingatEmailHtml } from '../../src/jobs/emailTemplates';
 import { ambilError } from './helpers';
 
 const sendMailMock = sendMail as jest.MockedFunction<typeof sendMail>;
@@ -213,5 +214,30 @@ describe('AuthService', () => {
     await expect(bcrypt.compare('baru12345', hashBaru)).resolves.toBe(true);
     expect(repo.markOtpUsed).toHaveBeenCalledWith('akun-1');
     expect(hasil.message).toContain('berhasil');
+  });
+
+  test('template email OTP dan pengingat kunjungan merender seluruh variabel dengan benar', () => {
+    const otpHtml = renderOtpEmailHtml({ kodeOtp: '654321', urlSistem: 'http://localhost:5173' });
+    expect(otpHtml).toContain('Kode Verifikasi');
+    expect(otpHtml).toContain('654321');
+    expect(otpHtml).toContain('10 menit');
+    expect(otpHtml).toContain('Praktek Mandiri Bidan Ria Indrasti J., S.Keb');
+    expect(otpHtml).not.toContain('{{');
+
+    const reminderHtml = renderPengingatEmailHtml({
+      namaPasien: 'Siti Aminah',
+      nomorAntrean: 'A-005',
+      namaLayanan: 'Pemeriksaan Kehamilan (ANC)',
+      tanggalKunjungan: '28-11-2026',
+      sesiPraktik: '08:00 - 12:00 WIB',
+      urlSistem: 'http://localhost:5173'
+    });
+    expect(reminderHtml).toContain('Pengingat Kunjungan');
+    expect(reminderHtml).toContain('Siti Aminah');
+    expect(reminderHtml).toContain('A-005');
+    expect(reminderHtml).toContain('Pemeriksaan Kehamilan (ANC)');
+    expect(reminderHtml).toContain('28-11-2026');
+    expect(reminderHtml).toContain('08:00 - 12:00 WIB');
+    expect(reminderHtml).not.toContain('{{');
   });
 });

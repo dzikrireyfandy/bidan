@@ -90,13 +90,21 @@ export class InventarisRepository {
       `SELECT TOP (@limit) o.obat_id, o.kode, o.nama_generik, o.nama_dagang, o.kategori,
               o.golongan, o.kekuatan, o.bentuk, o.satuan, o.stok_minimum, o.aktif,
               ISNULL(o.stok_saat_ini, ISNULL(SUM(sb.jumlah), 0)) AS stok_saat_ini,
-              ISNULL(o.stok_saat_ini, ISNULL(SUM(sb.jumlah), 0)) AS stok_total
+              ISNULL(o.stok_saat_ini, ISNULL(SUM(sb.jumlah), 0)) AS stok_total,
+              ISNULL(ho.harga_jual, 0) AS harga_jual
          FROM [Obat] o
          LEFT JOIN [Batch_Obat] bo ON bo.obat_id = o.obat_id
          LEFT JOIN [Stok_Batch] sb ON sb.batch_id = bo.batch_id
+         OUTER APPLY (
+           SELECT TOP 1 h.harga_jual
+             FROM [Harga_Obat] h
+            WHERE h.obat_id = o.obat_id
+              AND (h.berlaku_sampai IS NULL OR h.berlaku_sampai >= CAST(SYSDATETIME() AS DATE))
+            ORDER BY CASE WHEN h.berlaku_sampai IS NULL THEN 0 ELSE 1 END ASC, h.berlaku_dari DESC
+         ) ho
         WHERE @term IS NULL OR o.nama_generik LIKE @term OR o.nama_dagang LIKE @term OR o.kode LIKE @term
         GROUP BY o.obat_id, o.kode, o.nama_generik, o.nama_dagang, o.kategori,
-                 o.golongan, o.kekuatan, o.bentuk, o.satuan, o.stok_minimum, o.stok_saat_ini, o.aktif
+                 o.golongan, o.kekuatan, o.bentuk, o.satuan, o.stok_minimum, o.stok_saat_ini, o.aktif, ho.harga_jual
         ORDER BY o.nama_generik ASC`,
       { limit, term }
     );
@@ -152,6 +160,33 @@ export class InventarisRepository {
       }
     );
     return result.recordset[0];
+  }
+
+  async insertHargaAwalObat(input: {
+    obatId: string;
+    stafId: string | null;
+    hargaJual: number;
+    alasan?: string;
+  }): Promise<void> {
+    if (!input.hargaJual || input.hargaJual <= 0) return;
+    await db.query(
+      `DECLARE @sid UNIQUEIDENTIFIER = COALESCE(@staf_id, (SELECT TOP 1 staf_id FROM [Staf] WHERE aktif = 1));
+       IF @sid IS NOT NULL
+       BEGIN
+         UPDATE [Harga_Obat]
+            SET berlaku_sampai = SYSDATETIME()
+          WHERE obat_id = @obat_id AND berlaku_sampai IS NULL;
+
+         INSERT INTO [Harga_Obat] (obat_id, diubah_oleh, harga_jual, berlaku_dari, alasan)
+         VALUES (@obat_id, @sid, @harga_jual, CAST(SYSDATETIME() AS DATE), @alasan);
+       END`,
+      {
+        obat_id: input.obatId,
+        staf_id: input.stafId,
+        harga_jual: input.hargaJual,
+        alasan: (input.alasan?.trim() || 'Harga awal penambahan item baru').slice(0, 255)
+      }
+    );
   }
 
   async adjustStokSaatIni(obatId: string, delta: number): Promise<void> {

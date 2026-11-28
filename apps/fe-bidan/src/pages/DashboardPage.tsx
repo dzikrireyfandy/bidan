@@ -1,10 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { apiClient, session } from '../api/client';
 import { pesanErrorApi } from '../api/errors';
 import { KLINIK_INFO } from '../constants/klinik';
 import { AuditLogItem, HargaObatLogItem, NotifikasiEmailPasien } from '../api/types';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ReservationModal } from '../components/ReservationModal';
+import { DashboardInternalPanel } from '../components/dashboard/DashboardInternalPanel';
+import { LaporanOperasionalView } from '../components/dashboard/LaporanOperasionalView';
+import { RekapPendapatanView } from '../components/dashboard/RekapPendapatanView';
+import {
+  renderOtpEmailHtml,
+  renderPengingatEmailHtml,
+  SUBJECT_OTP_EMAIL,
+  SUBJECT_PENGINGAT_EMAIL
+} from '../utils/emailTemplates';
 
 interface DashboardPageProps {
   onLogout: () => void;
@@ -13,6 +23,7 @@ interface DashboardPageProps {
 }
 
 type AdminTab =
+  | 'beranda'
   | 'antrean'
   | 'pendaftaran'
   | 'pasien'
@@ -22,6 +33,8 @@ type AdminTab =
   | 'stok'
   | 'riwayat_harga'
   | 'email';
+
+type BidanTab = 'beranda' | 'laporan' | 'rekap' | 'input' | 'riwayat';
 
 interface MasterLayananRow {
   layanan_id: string;
@@ -79,9 +92,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     return () => clearTimeout(timer);
   }, [toast]);
 
-  // Navigation sub-tabs
-  const [adminTab, setAdminTab] = useState<AdminTab>('antrean');
-  const [rmeTab, setRmeTab] = useState<'input' | 'riwayat'>('input');
+  // Navigation sub-tabs (Halaman utama setelah login = Dashboard Internal 'beranda' untuk Admin & Bidan)
+  const [adminTab, setAdminTab] = useState<AdminTab>('beranda');
+  const [rmeTab, setRmeTab] = useState<BidanTab>('beranda');
   const [pasienTab, setPasienTab] = useState<'tiket' | 'lokasi'>('tiket');
 
   // Superadmin Audit State
@@ -215,7 +228,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     bentuk: 'TABLET',
     satuan: 'TABLET',
     stok_total: 20,
-    stok_minimum: 5
+    stok_minimum: 5,
+    harga_jual: 5000
   });
   const [mutasiForm, setMutasiForm] = useState({
     obat_id: '',
@@ -230,6 +244,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   const [previewEmail, setPreviewEmail] = useState<NotifikasiEmailPasien | null>(null);
 
   // RME Bidan State (Clean 2-Panel SOAP + Resep Obat Auto-Billing)
+  const [masterDiagnosaList, setMasterDiagnosaList] = useState<Array<{
+    diagnosa_id: string;
+    kode_icd: string;
+    nama: string;
+  }>>([]);
+  const [rmeDiagnosaId, setRmeDiagnosaId] = useState<string>('');
+  const [rmeKoreksiDariId, setRmeKoreksiDariId] = useState<string | null>(null);
+  const [rmeKoreksiLabel, setRmeKoreksiLabel] = useState<string | null>(null);
+  const [rmeAlergiWarning, setRmeAlergiWarning] = useState<string | null>(null);
+  const [rmeOverrideAlergi, setRmeOverrideAlergi] = useState<boolean>(false);
+  const [rmeAlasanOverride, setRmeAlasanOverride] = useState<string>('');
   const [rmeQueueFilter, setRmeQueueFilter] = useState<string>('');
   const [rmeLeftMode, setRmeLeftMode] = useState<'antrean' | 'pasien'>('antrean');
   const [selectedRmePatient, setSelectedRmePatient] = useState<any>(null);
@@ -264,6 +289,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
   const [rmeCurrentPage, setRmeCurrentPage] = useState<number>(1);
   const [rmeSavedList, setRmeSavedList] = useState<Array<{
     id: string;
+    kunjungan_id?: string;
+    pasien_id?: string;
+    sudah_dikoreksi?: boolean;
     waktu: string;
     pasien_nama: string;
     nik: string;
@@ -321,18 +349,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       .post('/harga/list', {})
       .then((res) => {
         const rawObat = res.data?.data?.obat;
+        const rawRiwayatObat = res.data?.data?.riwayat_obat;
         if (Array.isArray(rawObat)) {
-          const onlyWithHarga = rawObat.filter((item: any) => item.harga_obat_id);
-          const mappedLogs: HargaObatLogItem[] = onlyWithHarga.map((item: any) => {
+          const sourceHistory = Array.isArray(rawRiwayatObat)
+            ? rawRiwayatObat
+            : rawObat.filter((item: any) => item.harga_obat_id);
+
+          const mappedLogs: HargaObatLogItem[] = sourceHistory.map((item: any) => {
             const jual = Number(item.harga_jual || item.harga || 0);
             const beli = Number(item.hpp_beli || item.harga_beli || 0);
             const marginRp = beli > 0 ? jual - beli : 0;
             const marginPersen = beli > 0 ? Math.round((marginRp / beli) * 100) : 0;
+            const nd = String(item.nama_dagang || '').trim();
+            const ng = String(item.nama_generik || item.nama || 'Obat').trim();
             return {
               harga_obat_id: String(item.harga_obat_id ?? ''),
               obat_id: String(item.obat_id ?? ''),
               kode_obat: String(item.kode ?? item.kode_obat ?? ''),
-              nama_obat: String(item.nama_dagang || item.nama_generik || item.nama || 'Obat'),
+              nama_obat: nd && nd.toLowerCase() !== ng.toLowerCase() ? `${nd} (${ng})` : ng,
               kategori: String(item.kategori || 'Farmasi'),
               hpp_beli: beli,
               harga_jual: jual,
@@ -346,12 +380,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
           });
           setHargaLogs(mappedLogs);
           setMasterObatList(
-            rawObat.map((o: any) => ({
-              obat_id: String(o.obat_id || ''),
-              nama_generik: String(o.nama_dagang ? `${o.nama_dagang} (${o.nama_generik})` : o.nama_generik || o.nama || 'Obat'),
-              harga_jual: Number(o.harga_jual || o.harga || 0),
-              satuan: String(o.satuan || 'pcs')
-            }))
+            rawObat.map((o: any) => {
+              const nd = String(o.nama_dagang || '').trim();
+              const ng = String(o.nama_generik || o.nama || 'Obat').trim();
+              return {
+                obat_id: String(o.obat_id || ''),
+                nama_generik: nd && nd.toLowerCase() !== ng.toLowerCase() ? `${nd} (${ng})` : ng,
+                harga_jual: Number(o.harga_jual || o.harga || 0),
+                satuan: String(o.satuan || 'pcs')
+              };
+            })
           );
         }
 
@@ -374,30 +412,53 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       .catch(() => {});
   };
 
+  const isKasirRole = authenticatedRole === 'ADMIN_LOKAL' || authenticatedRole === 'SUPERADMIN';
+  const isStaffInternalRole = authenticatedRole !== 'PASIEN';
+
   const refreshKeuanganDanTagihan = () => {
-    apiClient
-      .post('/tagihan/list', { limit: 100 })
-      .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data)) {
-          setTagihanList(res.data.data);
-        }
-      })
-      .catch(() => {});
+    if (isKasirRole) {
+      apiClient
+        .post('/tagihan/list', { limit: 100 })
+        .then((res) => {
+          if (res.data?.data && Array.isArray(res.data.data)) {
+            setTagihanList(res.data.data);
+          }
+        })
+        .catch(() => {});
+    }
 
-    apiClient
-      .post('/keuangan/rekap/list', {})
-      .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data)) {
-          setRekapMetode(res.data.data);
-        }
-      })
-      .catch(() => {});
+    if (isStaffInternalRole) {
+      apiClient
+        .post('/keuangan/rekap/list', {})
+        .then((res) => {
+          if (res.data?.data && Array.isArray(res.data.data)) {
+            setRekapMetode(res.data.data);
+          }
+        })
+        .catch(() => {});
 
-    refreshHargaDanLayanan();
+      refreshHargaDanLayanan();
+    }
   };
 
   useEffect(() => {
-    refreshHargaDanLayanan();
+    if (isStaffInternalRole) {
+      refreshHargaDanLayanan();
+      apiClient
+        .post('/master/diagnosa/list', { limit: 200 })
+        .then((res) => {
+          if (Array.isArray(res.data?.data)) {
+            setMasterDiagnosaList(
+              res.data.data.map((d: any) => ({
+                diagnosa_id: String(d.diagnosa_id || ''),
+                kode_icd: String(d.kode_icd || '-'),
+                nama: String(d.nama || '')
+              }))
+            );
+          }
+        })
+        .catch(() => {});
+    }
 
     apiClient
       .post('/public/layanan/list', {})
@@ -422,23 +483,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       })
       .catch(() => {});
 
-    apiClient
-      .post('/keuangan/rekap/list', {})
-      .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data)) {
-          setRekapMetode(res.data.data);
-        }
-      })
-      .catch(() => {});
+    if (isStaffInternalRole) {
+      apiClient
+        .post('/keuangan/rekap/list', {})
+        .then((res) => {
+          if (res.data?.data && Array.isArray(res.data.data)) {
+            setRekapMetode(res.data.data);
+          }
+        })
+        .catch(() => {});
+    }
 
-    apiClient
-      .post('/tagihan/list', { limit: 100 })
-      .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data)) {
-          setTagihanList(res.data.data);
-        }
-      })
-      .catch(() => {});
+    if (isKasirRole) {
+      apiClient
+        .post('/tagihan/list', { limit: 100 })
+        .then((res) => {
+          if (res.data?.data && Array.isArray(res.data.data)) {
+            setTagihanList(res.data.data);
+          }
+        })
+        .catch(() => {});
+    }
 
     apiClient
       .post('/public/sesi/list', {})
@@ -452,136 +517,156 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       })
       .catch(() => {});
 
-    apiClient
-      .post('/audit-logs/list', { limit: 10000 })
-      .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data)) {
-          const mapped: AuditLogItem[] = res.data.data.map((a: any, idx: number) => ({
-            log_id: Number(a.log_id || idx + 1),
-            waktu: a.waktu ? new Date(a.waktu).toLocaleString('id-ID') : '-',
-            user_ref: String(a.user_ref || a.akun_id || 'Sistem'),
-            peran: String(a.peran || 'STAF'),
-            aksi: String(a.aksi || 'UPDATE'),
-            tabel: String(a.tabel || '-'),
-            id_baris: String(a.id_baris || '-'),
-            ip_address: String(a.ip_address || '-'),
-            nilai_lama: String(a.keterangan || '-'),
-            nilai_baru: String(a.keterangan || '-')
-          }));
-          setAuditLogs(mapped);
-          if (res.data?.meta && typeof res.data.meta.total_pengguna === 'number') {
-            setTotalAkunPengguna(res.data.meta.total_pengguna);
-          } else {
-            const uniqueUsers = new Set(mapped.map((l) => l.user_ref).filter(Boolean)).size;
-            setTotalAkunPengguna(uniqueUsers);
+    if (isKasirRole) {
+      apiClient
+        .post('/audit-logs/list', { limit: 10000 })
+        .then((res) => {
+          if (res.data?.data && Array.isArray(res.data.data)) {
+            const mapped: AuditLogItem[] = res.data.data.map((a: any, idx: number) => ({
+              log_id: Number(a.log_id || idx + 1),
+              waktu: a.waktu ? new Date(a.waktu).toLocaleString('id-ID') : '-',
+              user_ref: String(a.user_ref || a.akun_id || 'Sistem'),
+              peran: String(a.peran || 'STAF'),
+              aksi: String(a.aksi || 'UPDATE'),
+              tabel: String(a.tabel || '-'),
+              id_baris: String(a.id_baris || '-'),
+              ip_address: String(a.ip_address || '-'),
+              nilai_lama: String(a.keterangan || '-'),
+              nilai_baru: String(a.keterangan || '-')
+            }));
+            setAuditLogs(mapped);
+            if (res.data?.meta && typeof res.data.meta.total_pengguna === 'number') {
+              setTotalAkunPengguna(res.data.meta.total_pengguna);
+            } else {
+              const uniqueUsers = new Set(mapped.map((l) => l.user_ref).filter(Boolean)).size;
+              setTotalAkunPengguna(uniqueUsers);
+            }
           }
-        }
-      })
-      .catch(() => setAuditLogs([]));
+        })
+        .catch(() => setAuditLogs([]));
+    }
 
-    refreshReservasi();
+    if (isStaffInternalRole) {
+      refreshReservasi();
 
-    apiClient
-      .post('/klinis/rme/list', { limit: 100 })
-      .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
-          setRmeSavedList(
-            res.data.data.map((item: any) => ({
-              id: String(item.no_dokumen || item.id || `RME-${item.pemeriksaan_id || '001'}`),
-              waktu: item.waktu ? new Date(item.waktu).toLocaleString('id-ID') : '-',
-              pasien_nama: String(item.pasien_nama || 'Pasien'),
-              nik: String(item.nik || '-'),
-              no_rm: String(item.no_rm || '-'),
-              diagnosa: String(item.diagnosa || item.asesmen || '-'),
-              tindakan: String(item.tindakan || item.rencana || '-'),
-              tekanan_darah: String(item.tekanan_darah || '-'),
-              djj: String(item.djj || '-')
-            }))
-          );
-        }
-      })
-      .catch(() => {});
+      apiClient
+        .post('/klinis/rme/list', { limit: 100 })
+        .then((res) => {
+          if (res.data?.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+            setRmeSavedList(
+              res.data.data.map((item: any) => ({
+                id: String(item.no_dokumen || item.id || `RME-${item.pemeriksaan_id || '001'}`),
+                kunjungan_id: item.kunjungan_id ? String(item.kunjungan_id) : undefined,
+                pasien_id: item.pasien_id ? String(item.pasien_id) : undefined,
+                sudah_dikoreksi: Boolean(item.sudah_dikoreksi),
+                waktu: item.waktu ? new Date(item.waktu).toLocaleString('id-ID') : '-',
+                pasien_nama: String(item.pasien_nama || 'Pasien'),
+                nik: String(item.nik || '-'),
+                no_rm: String(item.no_rm || '-'),
+                diagnosa: String(item.diagnosa || item.asesmen || '-'),
+                tindakan: String(item.tindakan || item.rencana || '-'),
+                tekanan_darah: String(item.tekanan_darah || '-'),
+                djj: String(item.djj || '-')
+              }))
+            );
+          }
+        })
+        .catch(() => {});
 
-    apiClient
-      .post('/inventaris/list', {})
-      .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data)) {
-          const mapped = res.data.data.map((o: any) => {
-            const stokVal = Number(o.stok_saat_ini !== undefined ? o.stok_saat_ini : o.stok_total || 0);
-            const minVal = Number(o.stok_minimum || 10);
-            const namaDagang = String(o.nama_dagang || '').trim();
-            const namaGenerik = String(o.nama_generik || 'Obat').trim();
-            const namaLabel =
-              namaDagang && namaDagang.toLowerCase() !== namaGenerik.toLowerCase()
-                ? `${namaDagang} (${namaGenerik})`
-                : namaGenerik;
-            return {
-              obat_id: String(o.obat_id || '').trim(),
-              kode: String(o.kode || o.obat_id || '').trim(),
-              nama: namaLabel,
-              kategori: String(o.kategori || 'OBAT'),
-              golongan: String(o.golongan || '-'),
-              kekuatan: String(o.kekuatan || '-'),
-              stok: stokVal,
-              min: minVal,
-              satuan: String(o.satuan || 'Pcs'),
-              status: stokVal <= minVal ? 'MENIPIS' : 'AMAN'
-            };
-          });
-          setStokAlkes(mapped);
-          setObatOptions(
-            res.data.data
-              .filter((o: any) => typeof o.obat_id === 'string' && o.obat_id.length > 0)
-              .map((o: any) => {
-                const nd = String(o.nama_dagang || '').trim();
-                const ng = String(o.nama_generik || 'Obat').trim();
-                return {
-                  obat_id: String(o.obat_id).trim(),
-                  nama_obat: nd && nd.toLowerCase() !== ng.toLowerCase() ? `${nd} (${ng})` : ng,
-                  kategori: String(o.kategori || 'OBAT'),
-                  kode: String(o.kode || '')
-                };
-              })
-          );
-        }
-      })
-      .catch(() => {});
+      apiClient
+        .post('/inventaris/list', {})
+        .then((res) => {
+          if (res.data?.data && Array.isArray(res.data.data)) {
+            const mapped = res.data.data.map((o: any) => {
+              const stokVal = Number(o.stok_saat_ini !== undefined ? o.stok_saat_ini : o.stok_total || 0);
+              const minVal = Number(o.stok_minimum || 10);
+              const namaDagang = String(o.nama_dagang || '').trim();
+              const namaGenerik = String(o.nama_generik || 'Obat').trim();
+              const namaLabel =
+                namaDagang && namaDagang.toLowerCase() !== namaGenerik.toLowerCase()
+                  ? `${namaDagang} (${namaGenerik})`
+                  : namaGenerik;
+              return {
+                obat_id: String(o.obat_id || '').trim(),
+                kode: String(o.kode || o.obat_id || '').trim(),
+                nama: namaLabel,
+                kategori: String(o.kategori || 'OBAT'),
+                golongan: String(o.golongan || '-'),
+                kekuatan: String(o.kekuatan || '-'),
+                stok: stokVal,
+                min: minVal,
+                satuan: String(o.satuan || 'Pcs'),
+                harga_jual: Number(o.harga_jual || 0),
+                status: stokVal < minVal ? 'MENIPIS' : 'AMAN'
+              };
+            });
+            setStokAlkes(mapped);
+            setObatOptions(
+              res.data.data
+                .filter((o: any) => typeof o.obat_id === 'string' && o.obat_id.length > 0)
+                .map((o: any) => {
+                  const nd = String(o.nama_dagang || '').trim();
+                  const ng = String(o.nama_generik || 'Obat').trim();
+                  return {
+                    obat_id: String(o.obat_id).trim(),
+                    nama_obat: nd && nd.toLowerCase() !== ng.toLowerCase() ? `${nd} (${ng})` : ng,
+                    kategori: String(o.kategori || 'OBAT'),
+                    kode: String(o.kode || '')
+                  };
+                })
+            );
+          }
+        })
+        .catch(() => {});
 
-    apiClient
-      .post('/pasien/identitas/list', { limit: 200 })
-      .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data)) {
-          setRegisteredPatients(
-            res.data.data.map((p: any) => ({
-              ...p,
-              pasien_id: String(p.pasien_id || '').trim(),
-              no_rm: String(p.no_rm || '').trim(),
-              nik: String(p.nik || '').trim(),
-              nama: String(p.nama || '').trim(),
-              jenis_kelamin: String(p.jenis_kelamin || '').trim().toUpperCase().startsWith('L') ? 'L' : 'P'
-            }))
-          );
-        }
-      })
-      .catch(() => {});
+      apiClient
+        .post('/pasien/identitas/list', { limit: 200 })
+        .then((res) => {
+          if (res.data?.data && Array.isArray(res.data.data)) {
+            setRegisteredPatients(
+              res.data.data.map((p: any) => ({
+                ...p,
+                pasien_id: String(p.pasien_id || '').trim(),
+                no_rm: String(p.no_rm || '').trim(),
+                nik: String(p.nik || '').trim(),
+                nama: String(p.nama || '').trim(),
+                jenis_kelamin: String(p.jenis_kelamin || '').trim().toUpperCase().startsWith('L') ? 'L' : 'P'
+              }))
+            );
+          }
+        })
+        .catch(() => {});
+    }
 
-    apiClient
-      .post('/notifikasi/log/list', {})
-      .then((res) => {
-        if (res.data?.data && Array.isArray(res.data.data)) {
-          const mapped: NotifikasiEmailPasien[] = res.data.data.map((n: any) => ({
-            notif_id: String(n.notif_id || n.id),
-            pasien_nama: String(n.tujuan_nama || n.pasien_nama || 'Pasien'),
-            email_tujuan: String(n.tujuan || n.email || '-'),
-            jenis: n.jenis || 'TIKET_RESERVASI',
-            subjek: String(n.subjek || 'Notifikasi Layanan'),
-            waktu_kirim: n.waktu_kirim ? new Date(n.waktu_kirim).toLocaleString('id-ID') : 'Terkirim',
-            status: n.status === 'GAGAL' ? 'GAGAL' : n.status === 'ANTRE' ? 'MENUNGGU' : 'TERKIRIM'
-          }));
-          setEmailLogs(mapped);
-        }
-      })
-      .catch(() => {});
+    if (isKasirRole) {
+      apiClient
+        .post('/notifikasi/log/list', {})
+        .then((res) => {
+          if (res.data?.data && Array.isArray(res.data.data)) {
+            const mapped: NotifikasiEmailPasien[] = res.data.data.map((n: any) => {
+              const jenisStr = String(n.jenis || 'PENGINGAT_RESERVASI');
+              const defaultSubjek =
+                jenisStr === 'OTP_RESET' ? SUBJECT_OTP_EMAIL : SUBJECT_PENGINGAT_EMAIL;
+              return {
+                notif_id: String(n.notif_id || n.id || ''),
+                pasien_nama: String(n.tujuan_nama || n.pasien_nama || 'Pasien'),
+                email_tujuan: String(n.tujuan || n.email || '-'),
+                jenis: jenisStr,
+                subjek: String(n.subjek || defaultSubjek),
+                pesan: n.pesan ? String(n.pesan) : undefined,
+                nomor_antrean: n.nomor_antrean ? String(n.nomor_antrean) : undefined,
+                nama_layanan: n.nama_layanan ? String(n.nama_layanan) : undefined,
+                tanggal_kunjungan: n.tanggal_kunjungan ? String(n.tanggal_kunjungan) : undefined,
+                sesi_praktik: n.sesi_praktik ? String(n.sesi_praktik) : undefined,
+                waktu_kirim: n.waktu_kirim ? new Date(n.waktu_kirim).toLocaleString('id-ID') : 'Terkirim',
+                status: n.status === 'GAGAL' ? 'GAGAL' : n.status === 'ANTRE' ? 'MENUNGGU' : 'TERKIRIM'
+              };
+            });
+            setEmailLogs(mapped);
+          }
+        })
+        .catch(() => {});
+    }
   }, [reloadHarga]);
 
   // Gabungkan identitas pasien terpilih dengan master registeredPatients & antrean aktif secara kanonik
@@ -891,17 +976,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     const tot = Number(tagihan.total_tagihan !== undefined ? tagihan.total_tagihan : tagihan.total || 0);
     const dibayar = Number(tagihan.total_dibayar !== undefined ? tagihan.total_dibayar : tagihan.terbayar || 0);
     const sisaNominal = Math.max(0, Number(tagihan.sisa !== undefined ? tagihan.sisa : tot - dibayar));
+    const defaultNominal = sisaNominal > 0 ? sisaNominal : tot > 0 ? tot : 50000;
     setKasirDrawerTagihan(tagihan);
     setKasirDrawerRincian([]);
     setKasirForm({
-      tagihan_id: tagihan.tagihan_id,
-      jumlah: String(sisaNominal > 0 ? sisaNominal : tot),
+      tagihan_id: String(tagihan.tagihan_id || '').trim(),
+      jumlah: String(defaultNominal),
       metode: 'TUNAI',
       jenis: 'PELUNASAN'
     });
-    if (tagihan.kunjungan_id) {
+    if (tagihan.kunjungan_id && GUID_CLIENT_REGEX.test(String(tagihan.kunjungan_id).trim())) {
       apiClient
-        .post(`/kunjungan/${tagihan.kunjungan_id}/tagihan/detail`, {})
+        .post(`/kunjungan/${String(tagihan.kunjungan_id).trim()}/tagihan/detail`, {})
         .then((res) => {
           if (Array.isArray(res.data?.data?.rincian)) {
             setKasirDrawerRincian(res.data.data.rincian);
@@ -918,8 +1004,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
 
   const handleKasirSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!kasirForm.tagihan_id) {
-      notify('Pilih tagihan pasien yang akan dibayar terlebih dahulu.', 'error');
+    const cleanTagihanId = String(kasirForm.tagihan_id || '').trim();
+    if (!cleanTagihanId || !GUID_CLIENT_REGEX.test(cleanTagihanId)) {
+      notify('Pilih tagihan pasien yang valid terlebih dahulu.', 'error');
       return;
     }
     const jlh = Number(kasirForm.jumlah);
@@ -927,15 +1014,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       notify('Nominal pembayaran harus lebih dari Rp 0.', 'error');
       return;
     }
+    const rawStaf = sesiList[0]?.staf_id ? String(sesiList[0].staf_id).trim() : '';
+    const validKasirStafId = GUID_CLIENT_REGEX.test(rawStaf) ? rawStaf : undefined;
+
     setKasirSubmitting(true);
     try {
-      await apiClient.post(`/tagihan/${kasirForm.tagihan_id}/pembayaran`, {
+      await apiClient.post(`/tagihan/${cleanTagihanId}/pembayaran`, {
         jumlah: jlh,
         metode: kasirForm.metode,
-        jenis: kasirForm.jenis,
-        kasir_staf_id: sesiList[0]?.staf_id
+        jenis: kasirForm.metode === 'BPJS' ? 'PELUNASAN' : kasirForm.jenis,
+        ...(validKasirStafId ? { kasir_staf_id: validKasirStafId } : {})
       });
-      notify(`Pembayaran Rp ${jlh.toLocaleString('id-ID')} (${kasirForm.metode}) berhasil dikonfirmasi.`, 'success');
+      notify(
+        kasirForm.metode === 'BPJS'
+          ? `Klaim penuh Penjamin BPJS sebesar Rp ${jlh.toLocaleString('id-ID')} berhasil dikonfirmasi.`
+          : `Pembayaran Rp ${jlh.toLocaleString('id-ID')} (${kasirForm.metode}) berhasil dikonfirmasi.`,
+        'success'
+      );
       setKasirForm({ tagihan_id: '', jumlah: '', metode: 'TUNAI', jenis: 'PELUNASAN' });
       closeKasirDrawer();
       refreshKeuanganDanTagihan();
@@ -1141,11 +1236,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
     const pasienRm = activePatient.no_rm || '-';
     const validLayananId =
       rmeLayananId && GUID_CLIENT_REGEX.test(rmeLayananId.trim()) ? rmeLayananId.trim() : undefined;
+    const validDiagnosaId =
+      rmeDiagnosaId && GUID_CLIENT_REGEX.test(rmeDiagnosaId.trim()) ? rmeDiagnosaId.trim() : undefined;
+    const validKoreksiId =
+      rmeKoreksiDariId && GUID_CLIENT_REGEX.test(rmeKoreksiDariId.trim()) ? rmeKoreksiDariId.trim() : undefined;
 
     try {
       await apiClient.post('/klinis/rme/simpan', {
         pasien_id: activePatient.pasien_id,
         layanan_id: validLayananId,
+        diagnosa_id: validDiagnosaId,
+        koreksi_dari_id: validKoreksiId,
+        override_alergi: rmeOverrideAlergi,
+        alasan_override: rmeOverrideAlergi ? rmeAlasanOverride.trim() : undefined,
         keluhan: rmeForm.keluhan.trim(),
         pemeriksaan_fisik: [
           rmeForm.pemeriksaan_fisik.trim() || 'Kondisi umum baik',
@@ -1181,6 +1284,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
         setRmeSavedList(
           rmeRes.data.data.map((item: any) => ({
             id: String(item.no_dokumen || item.id || `RME-${item.pemeriksaan_id || '001'}`),
+            kunjungan_id: item.kunjungan_id ? String(item.kunjungan_id) : undefined,
+            pasien_id: item.pasien_id ? String(item.pasien_id) : undefined,
+            sudah_dikoreksi: Boolean(item.sudah_dikoreksi),
             waktu: item.waktu ? new Date(item.waktu).toLocaleString('id-ID') : new Date().toLocaleString('id-ID'),
             pasien_nama: String(item.pasien_nama || pasienNama),
             nik: String(item.nik || pasienNik),
@@ -1196,8 +1302,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
       refreshReservasi();
       refreshKeuanganDanTagihan();
 
-      notify(`Pemeriksaan ${pasienNama} tersimpan & tagihan otomatis diterbitkan ke Kasir.`, 'success');
+      notify(
+        validKoreksiId
+          ? `Koreksi pemeriksaan ${pasienNama} berhasil disimpan secara append-only.`
+          : `Pemeriksaan ${pasienNama} tersimpan, stok obat terpotong FEFO & tagihan otomatis diterbitkan.`,
+        'success'
+      );
       setRmeObatItems([]);
+      setRmeDiagnosaId('');
+      setRmeKoreksiDariId(null);
+      setRmeKoreksiLabel(null);
+      setRmeAlergiWarning(null);
+      setRmeOverrideAlergi(false);
+      setRmeAlasanOverride('');
       setRmeForm({
         tekanan_darah_sistolik: '',
         tekanan_darah_diastolik: '',
@@ -1216,6 +1333,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
         tgl_kontrol_ulang: ''
       });
     } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const errBody = err.response?.data as {
+          error?: { errorId?: string; message?: string; details?: { obat_alergi?: string[] } };
+        } | undefined;
+        const errId = errBody?.error?.errorId;
+        if (errId === 'ERR-RME-01' || errId === 'ERR-RME-02') {
+          const daftar = errBody?.error?.details?.obat_alergi?.join(', ');
+          setRmeAlergiWarning(
+            daftar
+              ? `${errBody?.error?.message || 'Peringatan alergi obat'}: ${daftar}`
+              : errBody?.error?.message || 'Peringatan: obat pada resep tercatat sebagai alergi pasien.'
+          );
+        }
+      }
+      // Seluruh isian formulir tetap utuh bila gagal (mis. stok tidak mencukupi / ERR-INV-01)!
       notify(pesanErrorApi(err, 'Gagal menyimpan pemeriksaan RME.'), 'error');
     } finally {
       setIsSavingRme(false);
@@ -1304,15 +1436,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
 
   const activeSectionTitle = (() => {
     if (currentRole === 'SUPERADMIN') return 'Log Audit Sistem';
-    if (currentRole === 'DOKTER') return rmeTab === 'input' ? 'Pemeriksaan RME (SOAP)' : 'Riwayat RME Pasien';
+    if (currentRole === 'DOKTER') {
+      const bidanMap: Record<BidanTab, string> = {
+        beranda: 'Dashboard Internal',
+        laporan: 'Laporan Operasional & Efek Harga',
+        rekap: 'Rekap Pendapatan (Baca Saja)',
+        input: 'Pemeriksaan RME (SOAP)',
+        riwayat: 'Riwayat RME Pasien'
+      };
+      return bidanMap[rmeTab];
+    }
     if (currentRole === 'PASIEN') return pasienTab === 'tiket' ? 'Antrean & Reservasi Saya' : 'Lokasi & Kontak Klinik';
     const map: Record<AdminTab, string> = {
+      beranda: 'Dashboard Internal',
       antrean: 'Antrean Hari Ini',
       pendaftaran: 'Pendaftaran Loket (Walk-In)',
       pasien: 'Data Pasien Terdaftar',
       sesi: 'Jadwal Sesi & Kuota',
       kasir: 'Kasir & Status Tagihan',
-      keuangan: 'Rekapitulasi Keuangan',
+      keuangan: 'Rekap Pendapatan & Keuangan',
       stok: 'Inventaris Obat & Alkes',
       riwayat_harga: 'Riwayat Harga Obat',
       email: 'Notifikasi Email Pasien'
@@ -1466,6 +1608,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
           {currentRole === 'ADMIN_LOKAL' && (
             <>
               <div className="dash-nav-section">
+                <div className="dash-nav-label">Ringkasan Utama</div>
+                <button type="button" className={`dash-nav-item ${adminTab === 'beranda' ? 'active' : ''}`} onClick={() => selectAdminMenu('beranda')} {...navHoverProps('Dashboard Internal')}>
+                  <span className="dash-nav-item-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    <span>Dashboard Internal</span>
+                  </span>
+                </button>
+              </div>
+
+              <div className="dash-nav-section">
                 <div className="dash-nav-label">Pelayanan &amp; Loket</div>
                 <button type="button" className={`dash-nav-item ${adminTab === 'antrean' ? 'active' : ''}`} onClick={() => selectAdminMenu('antrean')} {...navHoverProps('Antrean Hari Ini')}>
                   <span className="dash-nav-item-left">
@@ -1502,10 +1654,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   </span>
                   {unpaidCount > 0 && <span className="dash-nav-badge">{unpaidCount}</span>}
                 </button>
-                <button type="button" className={`dash-nav-item ${adminTab === 'keuangan' ? 'active' : ''}`} onClick={() => selectAdminMenu('keuangan')} {...navHoverProps('Rekap Keuangan')}>
+                <button type="button" className={`dash-nav-item ${adminTab === 'keuangan' ? 'active' : ''}`} onClick={() => selectAdminMenu('keuangan')} {...navHoverProps('Rekap Pendapatan')}>
                   <span className="dash-nav-item-left">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                    <span>Rekap Keuangan</span>
+                    <span>Rekap Pendapatan</span>
                   </span>
                 </button>
               </div>
@@ -1534,55 +1686,96 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
             </>
           )}
 
-          {/* MENU: BIDAN (RME) */}
+          {/* MENU: BIDAN (DASHBOARD, LAPORAN, REKAP BACA-SAJA, & RME) */}
           {currentRole === 'DOKTER' && (
-            <div className="dash-nav-section">
-              <div className="dash-nav-label">Rekam Medis Bidan</div>
-              {authenticatedRole === 'ADMIN_LOKAL' && (
+            <>
+              <div className="dash-nav-section">
+                <div className="dash-nav-label">Dashboard &amp; Analitik</div>
+                {authenticatedRole === 'ADMIN_LOKAL' && (
+                  <button
+                    type="button"
+                    className="dash-nav-item"
+                    onClick={() => {
+                      setCurrentRole('ADMIN_LOKAL');
+                      setAdminTab('pasien');
+                      setSidebarOpen(false);
+                      try {
+                        window.history.pushState({}, '', '/app/dashboard');
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    {...navHoverProps('Kembali ke Panel Admin')}
+                  >
+                    <span className="dash-nav-item-left">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+                      <span>Kembali ke Admin</span>
+                    </span>
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="dash-nav-item"
-                  onClick={() => {
-                    setCurrentRole('ADMIN_LOKAL');
-                    setAdminTab('pasien');
-                    setSidebarOpen(false);
-                    try {
-                      window.history.pushState({}, '', '/app/dashboard');
-                    } catch {
-                      // ignore
-                    }
-                  }}
-                  {...navHoverProps('Kembali ke Panel Admin')}
+                  className={`dash-nav-item ${rmeTab === 'beranda' ? 'active' : ''}`}
+                  onClick={() => { setRmeTab('beranda'); setSidebarOpen(false); }}
+                  {...navHoverProps('Dashboard Internal')}
                 >
                   <span className="dash-nav-item-left">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
-                    <span>Kembali ke Admin</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    <span>Dashboard Internal</span>
                   </span>
                 </button>
-              )}
-              <button
-                type="button"
-                className={`dash-nav-item ${rmeTab === 'input' ? 'active' : ''}`}
-                onClick={() => { setRmeTab('input'); setSidebarOpen(false); }}
-                {...navHoverProps('Input Pemeriksaan (SOAP)')}
-              >
-                <span className="dash-nav-item-left">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                  <span>Input Pemeriksaan (SOAP)</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className={`dash-nav-item ${rmeTab === 'riwayat' ? 'active' : ''}`}
-                onClick={() => { setRmeTab('riwayat'); setSidebarOpen(false); }}
-                {...navHoverProps('Riwayat RME Pasien')}
-              >
-                <span className="dash-nav-item-left">
+                {authenticatedRole === 'DOKTER' && (
+                  <button
+                    type="button"
+                    className={`dash-nav-item ${rmeTab === 'laporan' ? 'active' : ''}`}
+                    onClick={() => { setRmeTab('laporan'); setSidebarOpen(false); }}
+                    {...navHoverProps('Laporan Operasional & Efek Harga')}
+                  >
+                    <span className="dash-nav-item-left">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                      <span>Laporan Operasional</span>
+                    </span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`dash-nav-item ${rmeTab === 'rekap' ? 'active' : ''}`}
+                  onClick={() => { setRmeTab('rekap'); setSidebarOpen(false); }}
+                  {...navHoverProps('Rekap Pendapatan (Baca Saja)')}
+                >
+                  <span className="dash-nav-item-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    <span>Rekap Pendapatan</span>
+                  </span>
+                </button>
+              </div>
+
+              <div className="dash-nav-section">
+                <div className="dash-nav-label">Rekam Medis Bidan</div>
+                <button
+                  type="button"
+                  className={`dash-nav-item ${rmeTab === 'input' ? 'active' : ''}`}
+                  onClick={() => { setRmeTab('input'); setSidebarOpen(false); }}
+                  {...navHoverProps('Input Pemeriksaan (SOAP)')}
+                >
+                  <span className="dash-nav-item-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                    <span>Input Pemeriksaan (SOAP)</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`dash-nav-item ${rmeTab === 'riwayat' ? 'active' : ''}`}
+                  onClick={() => { setRmeTab('riwayat'); setSidebarOpen(false); }}
+                  {...navHoverProps('Riwayat RME Pasien')}
+                >
+                  <span className="dash-nav-item-left">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                   <span>Riwayat RME Pasien</span>
                 </span>
               </button>
-            </div>
+              </div>
+            </>
           )}
 
           {/* MENU: SUPERADMIN */}
@@ -2001,6 +2194,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                   <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', padding: '0.85rem 1.15rem', borderRadius: '10px', marginBottom: '1.25rem', fontWeight: 600, fontSize: '0.875rem' }}>
                     {callAlert}
                   </div>
+                )}
+
+                {/* 0. DASHBOARD INTERNAL (HALAMAN UTAMA SETELAH LOGIN — ADMIN) */}
+                {adminTab === 'beranda' && (
+                  <DashboardInternalPanel
+                    isAdmin={true}
+                    onNavigateKasir={() => selectAdminMenu('kasir')}
+                    onNavigateStok={() => selectAdminMenu('stok')}
+                  />
                 )}
 
                 {/* 1. ANTREAN HARI INI — SLIM METRIC STRIP + CLEAN LEDGER TABLE */}
@@ -2925,13 +3127,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                   <select
                                     className="dash-select"
                                     value={kasirForm.metode}
-                                    onChange={(e) => setKasirForm({ ...kasirForm, metode: e.target.value as any })}
+                                    onChange={(e) => {
+                                      const nextMetode = e.target.value as 'TUNAI' | 'QRIS' | 'TRANSFER' | 'BPJS';
+                                      if (nextMetode === 'BPJS') {
+                                        const klaimPenuh = sisaNominal > 0 ? sisaNominal : tot > 0 ? tot : Number(kasirForm.jumlah) || 50000;
+                                        setKasirForm({
+                                          ...kasirForm,
+                                          metode: 'BPJS',
+                                          jenis: 'PELUNASAN',
+                                          jumlah: String(klaimPenuh)
+                                        });
+                                      } else {
+                                        setKasirForm({ ...kasirForm, metode: nextMetode });
+                                      }
+                                    }}
                                   >
                                     <option value="TUNAI">Tunai (Cash)</option>
                                     <option value="QRIS">QRIS</option>
                                     <option value="TRANSFER">Transfer Bank</option>
-                                    <option value="BPJS">Penjamin BPJS</option>
+                                    <option value="BPJS">Penjamin BPJS (Klaim Penuh)</option>
                                   </select>
+                                  {kasirForm.metode === 'BPJS' && (
+                                    <div style={{ marginTop: '0.45rem', padding: '0.5rem 0.65rem', borderRadius: '6px', background: '#f5f3ff', border: '1px solid #ddd6fe', fontSize: '0.75rem', color: '#4c1d95', lineHeight: 1.45 }}>
+                                      Seluruh rincian layanan &amp; obat pada tagihan ini diklaim penuh melalui Penjamin BPJS Kesehatan.
+                                    </div>
+                                  )}
                                 </div>
 
                                 <div style={{ marginBottom: '0.85rem' }}>
@@ -2988,7 +3208,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
 
                 {/* 6. REKAPITULASI KEUANGAN (MURNI DATA DB TANPA KOLOM TERSINKRONISASI DB & TANPA HARGA/MARGIN FIKTIF) */}
                 {adminTab === 'keuangan' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    <RekapPendapatanView
+                      readOnly={false}
+                      onNavigateKasir={() => selectAdminMenu('kasir')}
+                    />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                       <div>
                         <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
@@ -3186,6 +3410,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                             <th>Kode</th>
                             <th>Nama Item</th>
                             <th>Kategori</th>
+                            <th>Harga Jual</th>
                             <th>Stok Saat Ini</th>
                             <th>Batas Minimum</th>
                             <th>Satuan</th>
@@ -3195,7 +3420,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                         <tbody>
                           {stokAlkes.length === 0 ? (
                             <tr>
-                              <td colSpan={7} style={{ padding: '2.25rem', textAlign: 'center', color: '#64748b' }}>
+                              <td colSpan={8} style={{ padding: '2.25rem', textAlign: 'center', color: '#64748b' }}>
                                 Belum ada data inventaris obat dan alkes.
                               </td>
                             </tr>
@@ -3208,6 +3433,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                   {s.golongan && s.golongan !== '-' && s.golongan !== s.kategori
                                     ? `${s.kategori} (${s.golongan})`
                                     : s.kategori}
+                                </td>
+                                <td className="tabular-nums" style={{ fontWeight: 700, color: '#0f172a' }}>
+                                  {Number(s.harga_jual) > 0 ? `Rp ${Number(s.harga_jual).toLocaleString('id-ID')}` : 'Rp 0'}
                                 </td>
                                 <td style={{ fontWeight: 800, color: s.status === 'AMAN' ? '#16a34a' : '#dc2626' }}>{s.stok}</td>
                                 <td style={{ color: '#64748b' }}>{s.min}</td>
@@ -3263,13 +3491,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                             <th>Kategori</th>
                             <th>Harga Jual</th>
                             <th>Berlaku Mulai</th>
+                            <th>Status Tarif</th>
                             <th>Keterangan Perubahan</th>
                           </tr>
                         </thead>
                         <tbody>
                           {hargaLogs.length === 0 ? (
                             <tr>
-                              <td colSpan={5} style={{ padding: '2.25rem', textAlign: 'center', color: '#64748b' }}>
+                              <td colSpan={6} style={{ padding: '2.25rem', textAlign: 'center', color: '#64748b' }}>
                                 Belum ada riwayat penyesuaian harga obat.
                               </td>
                             </tr>
@@ -3281,10 +3510,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                   {h.kode_obat && <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{h.kode_obat}</div>}
                                 </td>
                                 <td style={{ color: '#475569' }}>{h.kategori}</td>
-                                <td style={{ fontWeight: 700, color: '#16a34a' }}>
+                                <td className="tabular-nums" style={{ fontWeight: 700, color: h.berlaku_sampai ? '#64748b' : '#16a34a' }}>
                                   Rp {(Number(h.harga_jual) || 0).toLocaleString('id-ID')}
                                 </td>
                                 <td style={{ color: '#64748b' }}>{h.berlaku_dari}</td>
+                                <td>
+                                  <span
+                                    style={{
+                                      fontSize: '0.72rem',
+                                      fontWeight: 700,
+                                      padding: '0.18rem 0.55rem',
+                                      borderRadius: '9999px',
+                                      background: h.berlaku_sampai ? '#f1f5f9' : '#dcfce7',
+                                      color: h.berlaku_sampai ? '#475569' : '#166534'
+                                    }}
+                                  >
+                                    {h.berlaku_sampai ? `Berakhir ${h.berlaku_sampai}` : 'Tarif Aktif'}
+                                  </span>
+                                </td>
                                 <td style={{ color: '#475569' }}>{h.alasan || '-'}</td>
                               </tr>
                             ))
@@ -3316,6 +3559,61 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                         <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-primary-dark)', marginTop: '0.35rem' }}>
                           Aktif (SMTP)
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="dash-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem' }}>
+                      <div>
+                        <h3 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
+                          Template Pesan Email Resmi Klinik
+                        </h3>
+                        <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.15rem' }}>
+                          Tampilan email HTML resmi yang dikirimkan otomatis untuk Kode Verifikasi (OTP) dan Pengingat Jadwal Kunjungan (H-1).
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPreviewEmail({
+                              notif_id: 'TEMPLATE-OTP',
+                              pasien_nama: 'Pengguna Portal',
+                              email_tujuan: 'pasien@contoh.id',
+                              jenis: 'OTP_RESET',
+                              subjek: SUBJECT_OTP_EMAIL,
+                              pesan: 'Kode OTP reset kata sandi Anda: 482915. Kode berlaku 10 menit.',
+                              waktu_kirim: 'Template Aktif',
+                              status: 'TERKIRIM'
+                            })
+                          }
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.8rem', padding: '0.45rem 0.85rem' }}
+                        >
+                          Lihat Tampilan Pesan OTP
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const sampleQueue = queueList[0];
+                            setPreviewEmail({
+                              notif_id: 'TEMPLATE-PENGINGAT',
+                              pasien_nama: sampleQueue?.nama || registeredPatients[0]?.nama || 'Ny. Siti Aminah',
+                              email_tujuan: registeredPatients[0]?.email || 'pasien@contoh.id',
+                              jenis: 'PENGINGAT_RESERVASI',
+                              subjek: SUBJECT_PENGINGAT_EMAIL,
+                              nomor_antrean: sampleQueue?.no || 'A-001',
+                              nama_layanan: sampleQueue?.layanan || masterLayananList[0]?.nama || 'Pemeriksaan Kehamilan (ANC)',
+                              tanggal_kunjungan: sampleQueue?.tanggal || new Date().toLocaleDateString('id-ID'),
+                              sesi_praktik: sampleQueue?.sesi || '08:00 - 12:00 WIB',
+                              waktu_kirim: 'Template Aktif',
+                              status: 'TERKIRIM'
+                            });
+                          }}
+                          className="btn btn-primary"
+                          style={{ fontSize: '0.8rem', padding: '0.45rem 0.85rem' }}
+                        >
+                          Lihat Tampilan Pesan Pengingat (H-1)
+                        </button>
                       </div>
                     </div>
 
@@ -3419,6 +3717,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     Mode Pemeriksaan RME Pasien Terpilih
                   </span>
                 </div>
+              )}
+
+              {rmeTab === 'beranda' && (
+                <DashboardInternalPanel isAdmin={false} />
+              )}
+
+              {rmeTab === 'laporan' && (
+                <LaporanOperasionalView />
+              )}
+
+              {rmeTab === 'rekap' && (
+                <RekapPendapatanView readOnly={true} />
               )}
 
               {rmeTab === 'input' && (() => {
@@ -3909,13 +4219,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                   onChange={(e) => setRmeForm({ ...rmeForm, kode_icd10: e.target.value })}
                                 />
                               </div>
+                              <select
+                                className="dash-select"
+                                style={{ marginBottom: '0.45rem', padding: '0.42rem 0.6rem', fontSize: '0.8rem' }}
+                                value={rmeDiagnosaId}
+                                onChange={(e) => {
+                                  const nextId = e.target.value;
+                                  setRmeDiagnosaId(nextId);
+                                  const picked = masterDiagnosaList.find((d) => d.diagnosa_id === nextId);
+                                  if (picked) {
+                                    setRmeForm({
+                                      ...rmeForm,
+                                      kode_icd10: picked.kode_icd !== '-' ? picked.kode_icd : '',
+                                      diagnosa: picked.nama
+                                    });
+                                  }
+                                }}
+                              >
+                                <option value="">-- Pilih dari Master Diagnosis ICD-10 (atau ketik baru di bawah) --</option>
+                                {masterDiagnosaList.map((d) => (
+                                  <option key={d.diagnosa_id} value={d.diagnosa_id}>
+                                    [{d.kode_icd}] {d.nama}
+                                  </option>
+                                ))}
+                              </select>
                               <textarea
                                 rows={2}
                                 className="dash-textarea"
                                 style={{ fontSize: '0.835rem', padding: '0.55rem 0.7rem' }}
-                                placeholder="Contoh: G2P1A0 hamil 28 minggu, janin tunggal hidup intrauterin..."
+                                placeholder="Contoh: Pengawasan Kehamilan Normal Rutin (ANC Terpadu)..."
                                 value={rmeForm.diagnosa}
-                                onChange={(e) => setRmeForm({ ...rmeForm, diagnosa: e.target.value })}
+                                onChange={(e) => {
+                                  setRmeDiagnosaId('');
+                                  setRmeForm({ ...rmeForm, diagnosa: e.target.value });
+                                }}
                               />
                             </div>
                             <div>
@@ -4057,6 +4394,77 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                         </div>
                       </div>
 
+                      {/* Banner Mode Koreksi Kunjungan Append-Only */}
+                      {rmeKoreksiDariId && (
+                        <div
+                          style={{
+                            marginBottom: '0.85rem',
+                            padding: '0.75rem 1rem',
+                            borderRadius: '8px',
+                            background: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            color: '#1e3a8a',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            flexWrap: 'wrap'
+                          }}
+                        >
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>
+                            Mode Koreksi Kunjungan Append-Only ({rmeKoreksiLabel || rmeKoreksiDariId.slice(0, 8)}) — entri asal tidak diubah.
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => {
+                              setRmeKoreksiDariId(null);
+                              setRmeKoreksiLabel(null);
+                            }}
+                            style={{ padding: '0.28rem 0.65rem', fontSize: '0.74rem' }}
+                          >
+                            Batalkan Mode Koreksi
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Banner Peringatan Red-Flag Alergi Obat (ERR-RME-01 / ERR-RME-02) */}
+                      {rmeAlergiWarning && (
+                        <div
+                          role="alert"
+                          style={{
+                            marginBottom: '0.85rem',
+                            padding: '0.85rem 1rem',
+                            borderRadius: '8px',
+                            background: '#fef2f2',
+                            border: '1px solid #fecaca',
+                            color: '#991b1b'
+                          }}
+                        >
+                          <div style={{ fontSize: '0.82rem', fontWeight: 800, marginBottom: '0.45rem' }}>
+                            {rmeAlergiWarning}
+                          </div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', marginBottom: '0.45rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={rmeOverrideAlergi}
+                              onChange={(e) => setRmeOverrideAlergi(e.target.checked)}
+                            />
+                            <span>Saya sudah membaca peringatan alergi obat pasien ini</span>
+                          </label>
+                          {rmeOverrideAlergi && (
+                            <input
+                              type="text"
+                              className="dash-input"
+                              placeholder="Wajib isi alasan klinis pemberian obat..."
+                              value={rmeAlasanOverride}
+                              onChange={(e) => setRmeAlasanOverride(e.target.value)}
+                              style={{ fontSize: '0.78rem', padding: '0.4rem 0.65rem', background: '#ffffff' }}
+                            />
+                          )}
+                        </div>
+                      )}
+
                       {/* Bottom Auto-Billing Summary & Action Footer */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem', paddingTop: '0.95rem', borderTop: '1px solid #e2e8f0' }}>
                         <div className="tabular-nums" style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem 0.85rem' }}>
@@ -4075,6 +4483,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                             disabled={isSavingRme}
                             onClick={() => {
                               setRmeObatItems([]);
+                              setRmeDiagnosaId('');
+                              setRmeKoreksiDariId(null);
+                              setRmeKoreksiLabel(null);
+                              setRmeAlergiWarning(null);
+                              setRmeOverrideAlergi(false);
+                              setRmeAlasanOverride('');
                               setRmeForm({
                                 tekanan_darah_sistolik: '',
                                 tekanan_darah_diastolik: '',
@@ -4160,12 +4574,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                 <th>Tanda Vital</th>
                                 <th>Diagnosa</th>
                                 <th>Tindakan &amp; Resep</th>
+                                <th style={{ textAlign: 'right' }}>Koreksi</th>
                               </tr>
                             </thead>
                             <tbody>
                               {pagedRme.length === 0 ? (
                                 <tr>
-                                  <td colSpan={7} style={{ textAlign: 'center', padding: '2.25rem', color: '#64748b' }}>
+                                  <td colSpan={8} style={{ textAlign: 'center', padding: '2.25rem', color: '#64748b' }}>
                                     Belum ada riwayat pemeriksaan tercatat.
                                   </td>
                                 </tr>
@@ -4182,6 +4597,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                                     </td>
                                     <td style={{ fontWeight: 600 }}>{item.diagnosa}</td>
                                     <td style={{ color: '#475569' }}>{item.tindakan}</td>
+                                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                      {item.sudah_dikoreksi ? (
+                                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b' }}>Telah Dikoreksi</span>
+                                      ) : item.kunjungan_id ? (
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary"
+                                          style={{ padding: '0.26rem 0.6rem', fontSize: '0.73rem' }}
+                                          onClick={() => {
+                                            selectPatientForRme(
+                                              {
+                                                pasien_id: item.pasien_id || '',
+                                                nama: item.pasien_nama,
+                                                nik: item.nik,
+                                                no_rm: item.no_rm
+                                              },
+                                              false
+                                            );
+                                            setRmeKoreksiDariId(item.kunjungan_id || null);
+                                            setRmeKoreksiLabel(item.id);
+                                            setRmeForm((prev) => ({
+                                              ...prev,
+                                              diagnosa: item.diagnosa !== '-' ? item.diagnosa : '',
+                                              tindakan_resep: item.tindakan !== '-' ? item.tindakan : ''
+                                            }));
+                                            setRmeTab('input');
+                                          }}
+                                        >
+                                          Buat Koreksi
+                                        </button>
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </td>
                                   </tr>
                                 ))
                               )}
@@ -4757,6 +5206,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 const namaDag = (newAlkesItem.nama_dagang.trim() || namaGen).slice(0, 100);
                 const stokAwalVal = Math.max(0, Math.trunc(Number(newAlkesItem.stok_total) || 0));
                 const stokMinVal = Math.max(0, Math.trunc(Number(newAlkesItem.stok_minimum) || 0));
+                const hargaJualVal = Number(newAlkesItem.harga_jual) || 0;
+
+                if (hargaJualVal <= 0) {
+                  notify('Harga jual satuan harus lebih dari Rp 0 agar tercatat pada riwayat harga obat.', 'error');
+                  setAlkesSaving(false);
+                  return;
+                }
 
                 try {
                   await apiClient.post('/inventaris', {
@@ -4770,7 +5226,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     satuan: (newAlkesItem.satuan.trim() || (isAlkes ? 'PCS' : 'TABLET')).slice(0, 20),
                     stok_minimum: stokMinVal,
                     stok_awal: stokAwalVal,
-                    stok_saat_ini: stokAwalVal
+                    stok_saat_ini: stokAwalVal,
+                    harga_jual: hargaJualVal,
+                    alasan_harga: 'Harga awal penambahan item baru'
                   });
                   const refetch = await apiClient.post('/inventaris/list', {});
                   if (refetch.data?.data && Array.isArray(refetch.data.data)) {
@@ -4790,13 +5248,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                           stok: stokVal,
                           min: minVal,
                           satuan: String(o.satuan || 'Pcs'),
+                          harga_jual: Number(o.harga_jual || 0),
                           status: stokVal <= minVal ? 'MENIPIS' : 'AMAN'
                         };
                       })
                     );
                   }
+                  refreshHargaDanLayanan();
                   setReloadHarga((v) => v + 1);
-                  notify(`Item "${namaGen}" berhasil ditambahkan dengan stok awal ${stokAwalVal} ${newAlkesItem.satuan || 'unit'}.`, 'success');
+                  notify(
+                    `Item "${namaGen}" berhasil ditambahkan (Harga: Rp ${hargaJualVal.toLocaleString('id-ID')}, Stok awal: ${stokAwalVal} ${newAlkesItem.satuan || 'unit'}) dan tercatat di Riwayat Harga Obat.`,
+                    'success'
+                  );
                   setShowAddAlkesModal(false);
                   setNewAlkesItem({
                     kode: '',
@@ -4807,7 +5270,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                     bentuk: 'TABLET',
                     satuan: 'TABLET',
                     stok_total: 20,
-                    stok_minimum: 5
+                    stok_minimum: 5,
+                    harga_jual: 5000
                   });
                 } catch (err) {
                   notify(pesanErrorApi(err, 'Gagal menambahkan item inventaris.'), 'error');
@@ -4916,7 +5380,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                 </div>
               </div>
 
-              <div className="dash-grid-2" style={{ marginBottom: '1.25rem' }}>
+              <div className="dash-grid-3" style={{ marginBottom: '1.25rem' }}>
+                <div>
+                  <label className="dash-label">Harga Jual Satuan (Rp) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    className="dash-input tabular-nums"
+                    placeholder="Contoh: 5000"
+                    value={newAlkesItem.harga_jual || ''}
+                    onChange={(e) => setNewAlkesItem({ ...newAlkesItem, harga_jual: Math.max(0, Number(e.target.value) || 0) })}
+                  />
+                </div>
                 <div>
                   <label className="dash-label">Stok Awal *</label>
                   <input
@@ -4998,6 +5474,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
                           stok: stokVal,
                           min: minVal,
                           satuan: String(o.satuan || 'Pcs'),
+                          harga_jual: Number(o.harga_jual || 0),
                           status: stokVal <= minVal ? 'MENIPIS' : 'AMAN'
                         };
                       })
@@ -5236,36 +5713,93 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout, onGoToHo
         </div>
       )}
 
-      {/* Modal: Pratinjau Email Pasien */}
-      {previewEmail && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.55)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div className="dash-card" style={{ maxWidth: '540px', width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem', marginBottom: '1rem' }}>
-              <div>
-                <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>{previewEmail.subjek}</h4>
-                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.15rem' }}>
-                  Kepada: {previewEmail.pasien_nama} ({previewEmail.email_tujuan})
+      {/* Modal: Pratinjau Email Pasien (Render HTML Resmi OTP & Pengingat Kunjungan) */}
+      {previewEmail && (() => {
+        const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+        const isOtp = previewEmail.jenis === 'OTP_RESET';
+        const otpMatch = String(previewEmail.pesan || '').match(/(\d{6})/);
+        const emailHtml = isOtp
+          ? renderOtpEmailHtml({
+              kodeOtp: otpMatch?.[1] || '482915',
+              urlSistem: currentOrigin
+            })
+          : renderPengingatEmailHtml({
+              namaPasien: previewEmail.pasien_nama || 'Pasien',
+              nomorAntrean: previewEmail.nomor_antrean || 'A-001',
+              namaLayanan:
+                previewEmail.nama_layanan ||
+                (previewEmail.jenis === 'PENGINGAT_KB'
+                  ? 'Pelayanan Keluarga Berencana (KB)'
+                  : previewEmail.jenis === 'KONTROL_NEONATAL'
+                  ? 'Kontrol Neonatal & Tumbuh Kembang Bayi'
+                  : 'Pemeriksaan Kebidanan'),
+              tanggalKunjungan:
+                previewEmail.tanggal_kunjungan ||
+                String(previewEmail.pesan || '').match(/(\d{2}-\d{2}-\d{4})/)?.[1] ||
+                new Date().toLocaleDateString('id-ID'),
+              sesiPraktik: previewEmail.sesi_praktik || '08:00 - 12:00 WIB',
+              urlSistem: currentOrigin
+            });
+
+        const canResend = GUID_CLIENT_REGEX.test(String(previewEmail.notif_id || '').trim());
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.58)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div className="dash-card" style={{ maxWidth: '680px', width: '100%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', padding: '1.15rem 1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.85rem', marginBottom: '0.85rem', gap: '0.75rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '6px', background: '#f5f3ff', color: '#5b21b6' }}>
+                      {isOtp ? 'EMAIL KODE VERIFIKASI (OTP)' : 'EMAIL PENGINGAT KUNJUNGAN (H-1)'}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      {previewEmail.waktu_kirim}
+                    </span>
+                  </div>
+                  <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>{previewEmail.subjek}</h4>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.15rem' }}>
+                    Kepada: <strong>{previewEmail.pasien_nama}</strong> ({previewEmail.email_tujuan})
+                  </div>
                 </div>
+                <button type="button" onClick={() => setPreviewEmail(null)} style={{ fontSize: '1.35rem', color: '#64748b', lineHeight: 1 }} aria-label="Tutup pratinjau">&times;</button>
               </div>
-              <button type="button" onClick={() => setPreviewEmail(null)} style={{ fontSize: '1.25rem', color: '#64748b' }}>&times;</button>
-            </div>
-            <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', fontSize: '0.85rem', color: '#334155', lineHeight: 1.6, marginBottom: '1.25rem' }}>
-              <p style={{ marginBottom: '0.65rem' }}>Yth. <strong>{previewEmail.pasien_nama}</strong>,</p>
-              <p style={{ marginBottom: '0.65rem' }}>
-                Terima kasih telah melakukan pendaftaran layanan di <strong>{KLINIK_INFO.nama}</strong>. Silakan hadir sesuai jadwal sesi yang telah dipilih.
-              </p>
-              <p style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                Alamat: {KLINIK_INFO.alamat} | Telepon: {KLINIK_INFO.telepon}
-              </p>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setPreviewEmail(null)} className="btn btn-primary">
-                Tutup
-              </button>
+
+              <div style={{ flex: '1 1 auto', overflow: 'hidden', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#f4f4f6', minHeight: '420px' }}>
+                <iframe
+                  title="Pratinjau Tampilan Email"
+                  srcDoc={emailHtml}
+                  sandbox="allow-popups"
+                  style={{ width: '100%', height: '520px', maxHeight: '64vh', border: 'none', display: 'block', background: '#f4f4f6' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.95rem' }}>
+                {canResend && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await apiClient.post(`/notifikasi/${previewEmail.notif_id}/kirim-ulang`, {});
+                        setReloadHarga((v) => v + 1);
+                        notify(`Email ke ${previewEmail.email_tujuan} telah dijadwalkan untuk dikirim ulang.`, 'success');
+                        setPreviewEmail(null);
+                      } catch (err) {
+                        notify(pesanErrorApi(err, 'Gagal mengirim ulang email.'), 'error');
+                      }
+                    }}
+                    className="btn btn-secondary"
+                  >
+                    Kirim Ulang Email
+                  </button>
+                )}
+                <button type="button" onClick={() => setPreviewEmail(null)} className="btn btn-primary">
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

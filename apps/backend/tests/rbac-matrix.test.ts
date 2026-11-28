@@ -156,4 +156,12 @@ describe('RBAC presisi untuk baris kritis TSD', () => {
     ]);
     expect(profilUntuk('post', '/staf/:id/akun')).toEqual(['SUPERADMIN']);
   });
+
+  test('laporan operasional & analisis efek harga HANYA boleh diakses Bidan (DOKTER)', () => {
+    expect(profilUntuk('post', '/laporan/ringkasan/list')).toEqual(['DOKTER']);
+    expect(profilUntuk('post', '/laporan/tren-layanan/list')).toEqual(['DOKTER']);
+    expect(profilUntuk('post', '/laporan/jam-tersibuk/list')).toEqual(['DOKTER']);
+    expect(profilUntuk('post', '/laporan/perbandingan/list')).toEqual(['DOKTER']);
+    expect(profilUntuk('post', '/laporan/export')).toEqual(['DOKTER']);
+  });
 });

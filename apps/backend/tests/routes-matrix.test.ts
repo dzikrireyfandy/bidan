@@ -56,10 +56,10 @@ const berlabel = (r: { method: string; path: string }): string => `${r.method} $
 describe('Inventaris endpoint /api/v1', () => {
   const registry = getRouteRegistry();
 
-  test('tepat 129 endpoint bisnis terdaftar', () => {
+  test('seluruh endpoint bisnis terdaftar sinkron dengan registry', () => {
     const bisnis = routes.filter((rute) => rute.path !== '/');
-    expect(bisnis.length).toBe(129);
-    expect(registry.length).toBe(129);
+    expect(bisnis.length).toBe(133);
+    expect(registry.length).toBe(133);
   });
 
   test('tidak ada duplikat method+path', () => {

@@ -1,6 +1,56 @@
 import db from '../db/pool';
 
 export class KeuanganRepository {
+  static #bpjsChecked = false;
+
+  async ensureBpjsSupport(): Promise<void> {
+    if (KeuanganRepository.#bpjsChecked) return;
+    try {
+      await db.query(`
+        IF EXISTS (
+          SELECT 1 FROM sys.check_constraints
+           WHERE parent_object_id = OBJECT_ID('dbo.Pembayaran')
+             AND name = 'CK_Pembayaran_metode'
+             AND definition NOT LIKE '%BPJS%'
+        )
+        BEGIN
+          ALTER TABLE dbo.[Pembayaran] DROP CONSTRAINT [CK_Pembayaran_metode];
+          ALTER TABLE dbo.[Pembayaran] ADD CONSTRAINT [CK_Pembayaran_metode]
+            CHECK ([metode] IN ('TUNAI','TRANSFER','QRIS','KARTU','BPJS'));
+        END
+
+        IF NOT EXISTS (SELECT 1 FROM dbo.[Penjamin] WHERE jenis = 'BPJS' AND aktif = 1)
+        BEGIN
+          IF EXISTS (SELECT 1 FROM dbo.[Penjamin] WHERE jenis = 'BPJS')
+            UPDATE dbo.[Penjamin] SET aktif = 1 WHERE jenis = 'BPJS';
+          ELSE
+            INSERT INTO dbo.[Penjamin] (penjamin_id, nama, jenis, no_kontrak, kontak, aktif)
+            VALUES (NEWID(), N'BPJS Kesehatan', 'BPJS', '-', '-', 1);
+        END
+      `);
+      KeuanganRepository.#bpjsChecked = true;
+    } catch {
+      KeuanganRepository.#bpjsChecked = true;
+    }
+  }
+
+  async syncTotalTagihanIfZero(tagihanId: string, jumlah: number): Promise<void> {
+    await db.query(
+      `UPDATE [Tagihan]
+          SET total_tagihan = @jumlah
+        WHERE tagihan_id = @id AND ISNULL(total_tagihan, 0) = 0`,
+      { id: tagihanId, jumlah }
+    );
+  }
+
+  async findAnyActiveStaf(): Promise<string | null> {
+    const result = await db.query<{ staf_id: string }>(
+      `SELECT TOP 1 staf_id FROM [Staf] WHERE aktif = 1 ORDER BY nama ASC`,
+      {}
+    );
+    return result.recordset[0]?.staf_id ?? null;
+  }
+
   async findPenjaminMandiri(): Promise<string | null> {
     const result = await db.query<{ penjamin_id: string }>(
       `SELECT TOP 1 penjamin_id
@@ -250,6 +300,105 @@ export class KeuanganRepository {
     return result.recordset;
   }
 
+  /**
+   * 100% READ-ONLY (SELECT-only): Mengambil batas periode default (Hari ini atau Bulan Berjalan WIB).
+   */
+  async getReferensiPeriodeWib(): Promise<{ hari_ini: string; awal_bulan: string; akhir_bulan: string }> {
+    const result = await db.query<{ hari_ini: string; awal_bulan: string; akhir_bulan: string }>(
+      `DECLARE @today DATE = CAST(SYSDATETIME() AS DATE);
+       SELECT CONVERT(VARCHAR(10), @today, 23) AS hari_ini,
+              CONVERT(VARCHAR(10), DATEFROMPARTS(YEAR(@today), MONTH(@today), 1), 23) AS awal_bulan,
+              CONVERT(VARCHAR(10), EOMONTH(@today), 23) AS akhir_bulan`
+    );
+    const fallback = new Date().toISOString().slice(0, 10);
+    return (
+      result.recordset[0] ?? {
+        hari_ini: fallback,
+        awal_bulan: `${fallback.slice(0, 7)}-01`,
+        akhir_bulan: fallback
+      }
+    );
+  }
+
+  /**
+   * 100% READ-ONLY (SELECT-only): Rekap Pendapatan berdasarkan jalur pembayaran (MANDIRI, BPJS, ASURANSI).
+   * Satu definisi konsisten: hanya transaksi berstatus LUNAS pada kunjungan valid yang dihitung sebagai pendapatan.
+   */
+  async rekapPendapatanPerJalur(
+    dari: string,
+    sampai: string
+  ): Promise<{
+    perJalur: Array<{ jalur: string; jumlah_transaksi: number; jumlah_tagihan: number; total_pendapatan: number }>;
+    perTanggal: Array<{ tanggal: string; jalur: string; metode: string; jumlah_transaksi: number; total_pendapatan: number }>;
+  }> {
+    const perJalurRes = await db.query<{
+      jalur: string;
+      jumlah_transaksi: number;
+      jumlah_tagihan: number;
+      total_pendapatan: number;
+    }>(
+      `SELECT UPPER(pj.jenis) AS jalur,
+              COUNT(pb.pembayaran_id) AS jumlah_transaksi,
+              COUNT(DISTINCT pb.tagihan_id) AS jumlah_tagihan,
+              CAST(ISNULL(SUM(pb.jumlah), 0) AS DECIMAL(18,2)) AS total_pendapatan
+         FROM [Pembayaran] pb
+         INNER JOIN [Tagihan] t ON t.tagihan_id = pb.tagihan_id
+         INNER JOIN [Penjamin] pj ON pj.penjamin_id = pb.penjamin_id
+         INNER JOIN [Kunjungan] k ON k.kunjungan_id = t.kunjungan_id
+         LEFT JOIN [Reservasi] r ON r.reservasi_id = k.reservasi_id
+        WHERE t.status = 'LUNAS'
+          AND k.status <> 'BATAL'
+          AND (r.reservasi_id IS NULL OR r.status <> 'DIBATALKAN')
+          AND pb.waktu_bayar >= CAST(@dari AS DATETIME2)
+          AND pb.waktu_bayar < DATEADD(DAY, 1, CAST(@sampai AS DATETIME2))
+        GROUP BY UPPER(pj.jenis)`,
+      { dari, sampai }
+    );
+
+    const perTanggalRes = await db.query<{
+      tanggal: string;
+      jalur: string;
+      metode: string;
+      jumlah_transaksi: number;
+      total_pendapatan: number;
+    }>(
+      `SELECT CONVERT(VARCHAR(10), CAST(pb.waktu_bayar AS DATE), 23) AS tanggal,
+              UPPER(pj.jenis) AS jalur,
+              pb.metode,
+              COUNT(pb.pembayaran_id) AS jumlah_transaksi,
+              CAST(ISNULL(SUM(pb.jumlah), 0) AS DECIMAL(18,2)) AS total_pendapatan
+         FROM [Pembayaran] pb
+         INNER JOIN [Tagihan] t ON t.tagihan_id = pb.tagihan_id
+         INNER JOIN [Penjamin] pj ON pj.penjamin_id = pb.penjamin_id
+         INNER JOIN [Kunjungan] k ON k.kunjungan_id = t.kunjungan_id
+         LEFT JOIN [Reservasi] r ON r.reservasi_id = k.reservasi_id
+        WHERE t.status = 'LUNAS'
+          AND k.status <> 'BATAL'
+          AND (r.reservasi_id IS NULL OR r.status <> 'DIBATALKAN')
+          AND pb.waktu_bayar >= CAST(@dari AS DATETIME2)
+          AND pb.waktu_bayar < DATEADD(DAY, 1, CAST(@sampai AS DATETIME2))
+        GROUP BY CONVERT(VARCHAR(10), CAST(pb.waktu_bayar AS DATE), 23), UPPER(pj.jenis), pb.metode
+        ORDER BY tanggal DESC, jalur ASC, pb.metode ASC`,
+      { dari, sampai }
+    );
+
+    return {
+      perJalur: perJalurRes.recordset.map((r) => ({
+        jalur: r.jalur,
+        jumlah_transaksi: Number(r.jumlah_transaksi ?? 0),
+        jumlah_tagihan: Number(r.jumlah_tagihan ?? 0),
+        total_pendapatan: Number(r.total_pendapatan ?? 0)
+      })),
+      perTanggal: perTanggalRes.recordset.map((r) => ({
+        tanggal: r.tanggal,
+        jalur: r.jalur,
+        metode: r.metode,
+        jumlah_transaksi: Number(r.jumlah_transaksi ?? 0),
+        total_pendapatan: Number(r.total_pendapatan ?? 0)
+      }))
+    };
+  }
+
   async rincianPendapatanLayanan(): Promise<Record<string, unknown>[]> {
     const result = await db.query<Record<string, unknown>>(
       `SELECT l.layanan_id, l.kode, l.nama AS pos_layanan, l.kategori,
@@ -318,10 +467,35 @@ export class KeuanganRepository {
              FROM [Harga_Obat] h
             WHERE h.obat_id = o.obat_id
               AND (h.berlaku_sampai IS NULL OR h.berlaku_sampai >= CAST(SYSDATETIME() AS DATE))
-            ORDER BY h.berlaku_dari DESC
+            ORDER BY CASE WHEN h.berlaku_sampai IS NULL THEN 0 ELSE 1 END ASC, h.berlaku_dari DESC
          ) ho
         WHERE o.aktif = 1
         ORDER BY o.nama_generik ASC`
+    );
+    return result.recordset;
+  }
+
+  async listSemuaRiwayatHargaObat(): Promise<Record<string, unknown>[]> {
+    const result = await db.query<Record<string, unknown>>(
+      `SELECT ho.harga_obat_id,
+              o.obat_id,
+              o.kode,
+              o.nama_generik,
+              o.nama_dagang,
+              o.kategori,
+              o.satuan,
+              ho.harga_jual,
+              ho.berlaku_dari,
+              ho.berlaku_sampai,
+              ISNULL(s.nama, N'Staf Farmasi') AS diubah_oleh,
+              ho.alasan
+         FROM [Harga_Obat] ho
+         JOIN [Obat] o ON o.obat_id = ho.obat_id
+         LEFT JOIN [Staf] s ON s.staf_id = ho.diubah_oleh
+        WHERE o.aktif = 1
+        ORDER BY CASE WHEN ho.berlaku_sampai IS NULL THEN 0 ELSE 1 END ASC,
+                 ho.berlaku_dari DESC,
+                 o.nama_generik ASC`
     );
     return result.recordset;
   }

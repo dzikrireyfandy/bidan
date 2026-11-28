@@ -8,12 +8,17 @@ export const tagihanListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional()
 });
 
+const optionalUuidSchema = z.preprocess(
+  (val) => (val === '' || val === null ? undefined : val),
+  uuidSchema.optional()
+);
+
 export const bayarSchema = z.object({
-  jumlah: z.number().positive(),
+  jumlah: z.coerce.number().positive(),
   metode: z.enum(['TUNAI', 'TRANSFER', 'KARTU', 'QRIS', 'BPJS']),
   jenis: z.enum(['UANG_MUKA', 'CICILAN', 'PELUNASAN']).default('PELUNASAN'),
-  penjamin_id: uuidSchema.optional(),
-  kasir_staf_id: uuidSchema.optional()
+  penjamin_id: optionalUuidSchema,
+  kasir_staf_id: optionalUuidSchema
 });
 
 export const hargaSchema = z.object({
@@ -32,7 +37,14 @@ export const refParams = z.object({
   ref_id: uuidSchema
 });
 
+export const rekapPendapatanSchema = z.object({
+  jenis_periode: z.enum(['HARIAN', 'BULANAN', 'KUSTOM']).optional().default('BULANAN'),
+  dari: dateSchema.nullable().optional(),
+  sampai: dateSchema.nullable().optional()
+});
+
 export type TagihanListInput = z.infer<typeof tagihanListSchema>;
+export type RekapPendapatanInput = z.infer<typeof rekapPendapatanSchema>;
 export type BayarBody = z.infer<typeof bayarSchema>;
 export type HargaBody = z.infer<typeof hargaSchema>;
 export type RefParams = z.infer<typeof refParams>;

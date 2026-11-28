@@ -164,10 +164,11 @@ export class PasienRepository {
         );
         nomorAntrean = (cntRes.recordset[0]?.jml ?? 0) + 1;
         const offset = (nomorAntrean - 1) * (jadwal.durasi_per_pasien || 20);
-        await db.query(
+        const rsvOut = await db.query<{ reservasi_id: string }>(
           `INSERT INTO [Reservasi]
              (pasien_id, jadwal_id, layanan_id, nomor_antrean, estimasi_jam, status, metode_daftar)
-           VALUES (@pid, @jid, @lid, @nomor, DATEADD(MINUTE, @offset, CAST(@jam AS TIME(0))), 'MENUNGGU', 'WALK_IN')`,
+           OUTPUT INSERTED.reservasi_id
+           VALUES (@pid, @jid, @lid, @nomor, DATEADD(MINUTE, @offset, CAST(@jam AS TIME(0))), 'MENUNGGU', 'MANUAL_ADMIN')`,
           {
             pid: input.pasienId,
             jid: jadwal.jadwal_id,
@@ -177,6 +178,39 @@ export class PasienRepository {
             jam: jadwal.jam_mulai || '08:00:00'
           }
         );
+        const createdRsvId = rsvOut.recordset[0]?.reservasi_id;
+        if (createdRsvId) {
+          await db.query(
+            `DECLARE @pEmail NVARCHAR(255) = (SELECT TOP 1 email FROM [Pasien] WHERE pasien_id = @pid);
+             IF @pEmail IS NOT NULL AND LEN(LTRIM(RTRIM(@pEmail))) > 3
+                AND NOT EXISTS (SELECT 1 FROM [Notifikasi_Log] WHERE reservasi_id = @rid AND jenis = 'PENGINGAT_RESERVASI')
+             BEGIN
+               DECLARE @tglStr VARCHAR(10) = (SELECT TOP 1 CONVERT(VARCHAR(10), tanggal, 105) FROM [Jadwal_Praktik] WHERE jadwal_id = @jid);
+               DECLARE @jamStr VARCHAR(5) = (SELECT TOP 1 LEFT(CONVERT(VARCHAR(8), jam_mulai, 108), 5) FROM [Jadwal_Praktik] WHERE jadwal_id = @jid);
+               DECLARE @layNama NVARCHAR(100) = ISNULL((SELECT TOP 1 nama FROM [Layanan_Medis] WHERE layanan_id = @lid), N'Pemeriksaan Kebidanan');
+               INSERT INTO [Notifikasi_Log] (reservasi_id, jenis, tujuan, pesan, status, retry_count, waktu_kirim)
+               VALUES (
+                 @rid,
+                 'PENGINGAT_RESERVASI',
+                 @pEmail,
+                 LEFT(N'Pengingat kunjungan ' + ISNULL(@tglStr, '-') + N' pukul ' + ISNULL(@jamStr, '08:00') + N' WIB (' + @layNama + N').', 500),
+                 'ANTRE',
+                 0,
+                 SYSDATETIME()
+               );
+             END`,
+            {
+              pid: input.pasienId,
+              rid: createdRsvId,
+              jid: jadwal.jadwal_id,
+              lid: targetLayananId
+            }
+          );
+          if (process.env.NODE_ENV !== 'test') {
+            const { flushQueue } = await import('../jobs/cron');
+            void flushQueue();
+          }
+        }
       }
 
       if (targetLayananId) {

@@ -5,6 +5,7 @@ import type {
   BayarBody,
   HargaBody,
   RefParams,
+  RekapPendapatanInput,
   TagihanListInput
 } from '../validation/keuangan';
 
@@ -68,14 +69,27 @@ export class KeuanganService {
   }
 
   async bayar(id: string, body: BayarBody, stafId: string | null): Promise<Record<string, unknown>> {
-    const kasir = this.pastikanStaf(stafId ?? body.kasir_staf_id ?? null);
+    let resolvedStaf = stafId ?? body.kasir_staf_id ?? null;
+    if (!resolvedStaf && body.metode === 'BPJS' && typeof this.repository.findAnyActiveStaf === 'function') {
+      resolvedStaf = await this.repository.findAnyActiveStaf();
+    }
+    const kasir = this.pastikanStaf(resolvedStaf);
     const tagihan = await this.repository.findTagihan(id);
     if (!tagihan) {
       throw ApiError.fromCode('ERR-FIN-02');
     }
 
-    const totalTagihan = Number(tagihan['total_tagihan'] ?? 0);
+    if (body.metode === 'BPJS' && typeof this.repository.ensureBpjsSupport === 'function') {
+      await this.repository.ensureBpjsSupport();
+    }
+
+    let totalTagihan = Number(tagihan['total_tagihan'] ?? 0);
     const totalDibayar = Number(tagihan['total_dibayar'] ?? 0);
+    if (totalTagihan <= 0 && totalDibayar === 0 && body.jumlah > 0 && typeof this.repository.syncTotalTagihanIfZero === 'function') {
+      await this.repository.syncTotalTagihanIfZero(id, body.jumlah);
+      totalTagihan = body.jumlah;
+    }
+
     const sisa = totalTagihan - totalDibayar;
     if (body.jumlah > sisa) {
       throw ApiError.fromCode('ERR-FIN-01', { sisa_tagihan: sisa });
@@ -84,9 +98,14 @@ export class KeuanganService {
     let penjaminId: string | null = body.penjamin_id ?? null;
     if (!penjaminId) {
       if (body.metode === 'BPJS') {
-        penjaminId = (await this.repository.findPenjaminBpjs()) ?? (await this.repository.findPenjaminMandiri());
+        penjaminId =
+          (typeof this.repository.findPenjaminBpjs === 'function' ? await this.repository.findPenjaminBpjs() : null) ??
+          (await this.repository.findPenjaminMandiri()) ??
+          (typeof this.repository.findAnyPenjamin === 'function' ? await this.repository.findAnyPenjamin() : null);
       } else {
-        penjaminId = (await this.repository.findPenjaminMandiri()) ?? (await this.repository.findAnyPenjamin());
+        penjaminId =
+          (await this.repository.findPenjaminMandiri()) ??
+          (typeof this.repository.findAnyPenjamin === 'function' ? await this.repository.findAnyPenjamin() : null);
       }
     }
     if (!penjaminId) {
@@ -128,12 +147,83 @@ export class KeuanganService {
     return this.repository.rekap(body.dari ?? null, body.sampai ?? null);
   }
 
-  async listHarga(): Promise<{ layanan: Record<string, unknown>[]; obat: Record<string, unknown>[] }> {
-    const [layanan, obat] = await Promise.all([
+  async rekapPendapatan(body: RekapPendapatanInput): Promise<Record<string, unknown>> {
+    const jenisPeriode = body.jenis_periode ?? 'BULANAN';
+    let dari = body.dari ?? null;
+    let sampai = body.sampai ?? null;
+
+    if (!dari || !sampai) {
+      const ref = await this.repository.getReferensiPeriodeWib();
+      if (jenisPeriode === 'HARIAN') {
+        dari = dari ?? ref.hari_ini;
+        sampai = sampai ?? dari;
+      } else {
+        dari = dari ?? ref.awal_bulan;
+        sampai = sampai ?? ref.akhir_bulan;
+      }
+    }
+
+    periodRange({ dari, sampai });
+
+    const { perJalur, perTanggal } = await this.repository.rekapPendapatanPerJalur(dari, sampai);
+    const mapJalur = new Map(perJalur.map((j) => [j.jalur, j]));
+
+    const jalurStandar = (['MANDIRI', 'BPJS', 'ASURANSI'] as const).map((kode) => {
+      const found = mapJalur.get(kode);
+      return {
+        jalur: kode,
+        jumlah_transaksi: found?.jumlah_transaksi ?? 0,
+        jumlah_tagihan: found?.jumlah_tagihan ?? 0,
+        total_pendapatan: Number(found?.total_pendapatan ?? 0)
+      };
+    });
+
+    const totalPendapatan = jalurStandar.reduce((acc, j) => acc + j.total_pendapatan, 0);
+    const totalTransaksi = jalurStandar.reduce((acc, j) => acc + j.jumlah_transaksi, 0);
+    const fmt = (iso: string) => {
+      const [y = '', m = '', d = ''] = iso.split('-');
+      return `${d}/${m}/${y}`;
+    };
+
+    const kosong = totalPendapatan === 0 && totalTransaksi === 0;
+
+    return {
+      periode: {
+        jenis_periode: jenisPeriode,
+        dari,
+        sampai,
+        dari_tampil: fmt(dari),
+        sampai_tampil: fmt(sampai)
+      },
+      total_pendapatan: Math.round(totalPendapatan * 100) / 100,
+      total_transaksi: totalTransaksi,
+      kosong,
+      pesan_informasi: kosong
+        ? 'Tidak ada transaksi berstatus lunas pada periode yang dipilih (Total Pendapatan Rp 0).'
+        : null,
+      rincian_jalur: jalurStandar,
+      rincian_harian: perTanggal.map((r) => ({
+        ...r,
+        tanggal_tampil: fmt(r.tanggal)
+      }))
+    };
+  }
+
+  async listHarga(): Promise<{
+    layanan: Record<string, unknown>[];
+    obat: Record<string, unknown>[];
+    riwayat_obat?: Record<string, unknown>[];
+  }> {
+    const [layanan, obat, riwayatObat] = await Promise.all([
       this.repository.listHargaLayanan(),
-      this.repository.listHargaObat()
+      this.repository.listHargaObat(),
+      typeof this.repository.listSemuaRiwayatHargaObat === 'function'
+        ? this.repository.listSemuaRiwayatHargaObat()
+        : Promise.resolve(undefined)
     ]);
-    return { layanan, obat };
+    return riwayatObat !== undefined
+      ? { layanan, obat, riwayat_obat: riwayatObat }
+      : { layanan, obat };
   }
 
   async setHarga(

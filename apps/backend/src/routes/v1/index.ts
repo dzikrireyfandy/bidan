@@ -11,6 +11,7 @@ import keuanganRouter from './keuangan.routes';
 import ranapRouter from './ranap.routes';
 import penunjangRouter from './penunjang.routes';
 import laporanRouter from './laporan.routes';
+import dashboardRouter from './dashboard.routes';
 import adminRouter from './admin.routes';
 
 const router = Router();
@@ -38,6 +39,7 @@ router.use(keuanganRouter);
 router.use(ranapRouter);
 router.use(penunjangRouter);
 router.use(laporanRouter);
+router.use(dashboardRouter);
 router.use(adminRouter);
 
 export default router;

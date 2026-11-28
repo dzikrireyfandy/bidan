@@ -204,13 +204,38 @@ export class PublicRepository {
                     status = CASE WHEN total_dibayar >= @tot AND @tot > 0 THEN 'LUNAS' ELSE 'BELUM_LUNAS' END
               WHERE tagihan_id = @tid;
            END
+         END
+
+         DECLARE @ridNotif UNIQUEIDENTIFIER = @reservasi_id;
+         DECLARE @pEmail NVARCHAR(255) = (SELECT TOP 1 email FROM [Pasien] WHERE pasien_id = @pasien_id);
+         IF @ridNotif IS NOT NULL AND @pEmail IS NOT NULL AND LEN(LTRIM(RTRIM(@pEmail))) > 3
+            AND NOT EXISTS (SELECT 1 FROM [Notifikasi_Log] WHERE reservasi_id = @ridNotif AND jenis = 'PENGINGAT_RESERVASI')
+         BEGIN
+           DECLARE @tglStr VARCHAR(10) = (SELECT TOP 1 CONVERT(VARCHAR(10), tanggal, 105) FROM [Jadwal_Praktik] WHERE jadwal_id = @jadwal_id);
+           DECLARE @jamStr VARCHAR(5) = (SELECT TOP 1 LEFT(CONVERT(VARCHAR(8), jam_mulai, 108), 5) FROM [Jadwal_Praktik] WHERE jadwal_id = @jadwal_id);
+           DECLARE @layNama NVARCHAR(100) = ISNULL((SELECT TOP 1 nama FROM [Layanan_Medis] WHERE layanan_id = @layanan_id), N'Pemeriksaan Kebidanan');
+           INSERT INTO [Notifikasi_Log] (reservasi_id, jenis, tujuan, pesan, status, retry_count, waktu_kirim)
+           VALUES (
+             @ridNotif,
+             'PENGINGAT_RESERVASI',
+             @pEmail,
+             LEFT(N'Pengingat kunjungan ' + ISNULL(@tglStr, '-') + N' pukul ' + ISNULL(@jamStr, '08:00') + N' WIB (' + @layNama + N').', 500),
+             'ANTRE',
+             0,
+             SYSDATETIME()
+           );
          END`,
         {
           pasien_id: input.pasienId,
           jadwal_id: input.jadwalId,
-          layanan_id: input.layananId
+          layanan_id: input.layananId,
+          reservasi_id: (result.recordset[0]?.['reservasi_id'] as string | undefined) ?? null
         }
       );
+      if (process.env.NODE_ENV !== 'test') {
+        const { flushQueue } = await import('../jobs/cron');
+        void flushQueue();
+      }
     } catch {
       // Lanjutkan pengembalian tiket reservasi bila auto-tagihan awal gagal
     }

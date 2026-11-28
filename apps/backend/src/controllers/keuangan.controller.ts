@@ -1,7 +1,13 @@
 import { asyncHandler } from '../middleware/asyncHandler';
 import respond from '../http/respond';
 import { KeuanganService } from '../services/keuangan.service';
-import type { BayarBody, HargaBody, RefParams, TagihanListInput } from '../validation/keuangan';
+import type {
+  BayarBody,
+  HargaBody,
+  RefParams,
+  RekapPendapatanInput,
+  TagihanListInput
+} from '../validation/keuangan';
 
 const service = new KeuanganService();
 
@@ -26,6 +32,11 @@ export const rekap = asyncHandler(async (req, res) => {
   return respond.ok(res, await service.rekap(body));
 });
 
+export const rekapPendapatan = asyncHandler(async (req, res) => {
+  const body = (req.validated?.body ?? {}) as RekapPendapatanInput;
+  return respond.ok(res, await service.rekapPendapatan(body));
+});
+
 export const listHarga = asyncHandler(async (_req, res) => {
   return respond.ok(res, await service.listHarga());
 });
@@ -46,6 +57,7 @@ export default {
   bayar,
   listTagihan,
   rekap,
+  rekapPendapatan,
   listHarga,
   setHarga,
   riwayatHarga

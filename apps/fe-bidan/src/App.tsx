@@ -44,9 +44,19 @@ export function App() {
       }
     };
 
+    const handleUnauthorized = () => {
+      setIsAuthenticated(false);
+      setUserName('');
+      setCurrentView('login');
+    };
+
     syncRouteAndSession();
     window.addEventListener('popstate', syncRouteAndSession);
-    return () => window.removeEventListener('popstate', syncRouteAndSession);
+    window.addEventListener('bidan:unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('popstate', syncRouteAndSession);
+      window.removeEventListener('bidan:unauthorized', handleUnauthorized);
+    };
   }, []);
 
   const handleLoginSuccess = (role: 'SUPERADMIN' | 'ADMIN_LOKAL' | 'DOKTER' | 'PASIEN') => {

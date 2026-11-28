@@ -1,7 +1,13 @@
 import cron from 'node-cron';
 import config from '../config/env';
 import db from '../db/pool';
-import { isMailerEnabled, sendMail } from './mailer';
+import { isMailerEnabled, sendMail, urlSistemPublik } from './mailer';
+import {
+  renderOtpEmailHtml,
+  renderPengingatEmailHtml,
+  SUBJECT_OTP_EMAIL,
+  SUBJECT_PENGINGAT_EMAIL
+} from './emailTemplates';
 
 const TZ = 'Asia/Jakarta';
 const tasks: Array<ReturnType<typeof cron.schedule>> = [];
@@ -92,16 +98,85 @@ export const flushQueue = async (): Promise<void> => {
     return;
   }
   try {
-    const pending = await db.query<{ notif_id: string; tujuan: string; jenis: string; pesan: string }>(
-      `SELECT TOP 50 notif_id, tujuan, jenis, pesan
-         FROM [Notifikasi_Log]
-        WHERE status = 'ANTRE' AND waktu_kirim <= SYSDATETIME()
-        ORDER BY waktu_kirim ASC`,
+    const pending = await db.query<{
+      notif_id: string;
+      tujuan: string;
+      jenis: string;
+      pesan: string;
+      pasien_nama: string | null;
+      nomor_antrean: string | null;
+      nama_layanan: string | null;
+      tanggal_kunjungan: string | null;
+      sesi_praktik: string | null;
+    }>(
+      `SELECT TOP 50
+              n.notif_id,
+              n.tujuan,
+              n.jenis,
+              n.pesan,
+              pInfo.nama AS pasien_nama,
+              CASE
+                WHEN r.nomor_antrean IS NOT NULL THEN 'A-' + RIGHT('000' + CAST(r.nomor_antrean AS VARCHAR(10)), 3)
+                ELSE NULL
+              END AS nomor_antrean,
+              l.nama AS nama_layanan,
+              CONVERT(VARCHAR(10), j.tanggal, 105) AS tanggal_kunjungan,
+              CASE
+                WHEN j.jam_mulai IS NOT NULL AND j.jam_selesai IS NOT NULL
+                THEN LEFT(CONVERT(VARCHAR(8), j.jam_mulai, 108), 5) + ' - ' + LEFT(CONVERT(VARCHAR(8), j.jam_selesai, 108), 5) + ' WIB'
+                ELSE NULL
+              END AS sesi_praktik
+         FROM [Notifikasi_Log] n
+         LEFT JOIN [Reservasi] r ON r.reservasi_id = n.reservasi_id
+         LEFT JOIN [Jadwal_Praktik] j ON j.jadwal_id = r.jadwal_id
+         LEFT JOIN [Layanan_Medis] l ON l.layanan_id = r.layanan_id
+         OUTER APPLY (
+           SELECT TOP 1 ps.nama
+             FROM [Pasien] ps
+            WHERE (r.pasien_id IS NOT NULL AND ps.pasien_id = r.pasien_id)
+               OR (r.pasien_id IS NULL AND ps.email = n.tujuan)
+            ORDER BY CASE WHEN ps.pasien_id = r.pasien_id THEN 0 ELSE 1 END ASC
+         ) pInfo
+        WHERE n.status = 'ANTRE' AND n.waktu_kirim <= SYSDATETIME()
+        ORDER BY n.waktu_kirim ASC`,
       {}
     );
 
+    const urlSistem = urlSistemPublik();
+
     for (const row of pending.recordset) {
-      const terkirim = await sendMail(row.tujuan, row.jenis, row.pesan);
+      let subject = row.jenis;
+      let html: string | undefined;
+
+      if (row.jenis === 'OTP_RESET') {
+        const otpMatch = String(row.pesan ?? '').match(/(\d{6})/);
+        if (otpMatch?.[1]) {
+          subject = SUBJECT_OTP_EMAIL;
+          html = renderOtpEmailHtml({
+            kodeOtp: otpMatch[1],
+            urlSistem
+          });
+        }
+      } else {
+        subject = SUBJECT_PENGINGAT_EMAIL;
+        const defaultLayanan =
+          row.jenis === 'PENGINGAT_KB'
+            ? 'Pelayanan Keluarga Berencana (KB)'
+            : row.jenis === 'KONTROL_NEONATAL'
+            ? 'Kontrol Neonatal & Tumbuh Kembang Bayi'
+            : 'Pemeriksaan Kebidanan';
+        const dateMatch = String(row.pesan ?? '').match(/(\d{2}-\d{2}-\d{4})/);
+        html = renderPengingatEmailHtml({
+          namaPasien: row.pasien_nama ?? 'Pasien',
+          nomorAntrean: row.nomor_antrean ?? 'A-001',
+          namaLayanan: row.nama_layanan ?? defaultLayanan,
+          tanggalKunjungan: row.tanggal_kunjungan ?? dateMatch?.[1] ?? new Date().toLocaleDateString('id-ID'),
+          sesiPraktik: row.sesi_praktik ?? '08:00 - 12:00 WIB',
+          urlSistem
+        });
+      }
+
+      const terkirim = await sendMail(row.tujuan, subject, row.pesan, html);
       await db.query(
         `UPDATE [Notifikasi_Log]
             SET status = @status,

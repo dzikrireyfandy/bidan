@@ -52,7 +52,7 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req: Request, re
     }
   }
 
-  if (statusCode >= 500 && process.env.NODE_ENV === 'production') {
+  if (statusCode >= 500 && process.env.NODE_ENV === 'production' && !errorId) {
     message = 'Internal Server Error';
     details = null;
   }

@@ -2,8 +2,12 @@ import { z } from 'zod';
 import { dateSchema } from './common';
 
 export const periodeSchema = z.object({
+  jenis_periode: z.enum(['HARIAN', 'BULANAN']).optional(),
   dari: dateSchema.optional(),
   sampai: dateSchema.optional(),
+  pembanding_dari: dateSchema.optional(),
+  pembanding_sampai: dateSchema.optional(),
+  format: z.enum(['PDF', 'EXCEL', 'JSON']).optional(),
   limit: z.coerce.number().int().min(1).max(50000).optional()
 });
 

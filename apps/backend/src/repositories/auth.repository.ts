@@ -174,7 +174,7 @@ export class AuthRepository {
   async createOtp(akunId: string, kodeHash: string): Promise<void> {
     await db.query(
       `INSERT INTO [Otp_Reset] (akun_id, kode_hash, expired_at, dipakai)
-       VALUES (@id, @hash, DATEADD(MINUTE, 15, SYSDATETIME()), 0)`,
+       VALUES (@id, @hash, DATEADD(MINUTE, 10, SYSDATETIME()), 0)`,
       { id: akunId, hash: kodeHash }
     );
   }

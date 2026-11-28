@@ -28,6 +28,13 @@ export const perbandingan = asyncHandler(async (req, res) => {
 
 export const exportLaporan = asyncHandler(async (req, res) => {
   const body = req.validated?.body as PeriodeInput;
+  if (body?.format === 'PDF' || body?.format === 'EXCEL') {
+    const file = await service.generateExportFile(body);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.setHeader('Content-Length', String(file.buffer.length));
+    return res.status(200).send(file.buffer);
+  }
   return respond.ok(res, await service.export(body));
 });
 

@@ -92,7 +92,7 @@ export class AuthService {
       const kodeHash = await bcrypt.hash(kode, 10);
       await this.repository.createOtp(akunId, kodeHash);
 
-      const pesan = `Kode OTP reset kata sandi Anda: ${kode}. Kode berlaku 15 menit.`;
+      const pesan = `Kode OTP reset kata sandi Anda: ${kode}. Kode berlaku 10 menit.`;
       const terkirim = await sendMail(email, 'Kode OTP Reset Kata Sandi', pesan);
       // Kirim langsung agar OTP tiba < 1 menit; antrekan hanya bila SMTP gagal.
       await this.repository.recordNotification(email, pesan, terkirim ? 'TERKIRIM' : 'ANTRE');

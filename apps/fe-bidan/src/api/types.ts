@@ -114,8 +114,13 @@ export interface NotifikasiEmailPasien {
   notif_id: string;
   pasien_nama: string;
   email_tujuan: string;
-  jenis: 'TIKET_RESERVASI' | 'PENGINGAT_KONTROL_H1' | 'RESUME_MEDIS_KIA';
+  jenis: string;
   subjek: string;
+  pesan?: string;
+  nomor_antrean?: string;
+  nama_layanan?: string;
+  tanggal_kunjungan?: string;
+  sesi_praktik?: string;
   waktu_kirim: string;
   status: 'TERKIRIM' | 'MENUNGGU' | 'GAGAL';
 }

@@ -1,6 +1,7 @@
 import ApiError from '../errors/ApiError';
 import { Request, RequestHandler } from 'express';
 import { Peran, Profile, SubPeran } from '../types';
+import { auditRepository } from '../repositories/audit.repository';
 
 export const PERAN = {
   SUPERADMIN: 'SUPERADMIN',
@@ -19,23 +20,37 @@ export const effectiveProfile = (auth: { peran: Peran; subPeran: SubPeran | null
   auth.peran === PERAN.STAFF && auth.subPeran ? `STAFF:${auth.subPeran}` : auth.peran;
 
 export const requireRole = (...roles: Peran[]): RequestHandler => {
-  return (req, _res, next) => {
+  return async (req, _res, next) => {
     if (!req.auth || !roles.includes(req.auth.peran)) {
-      return next(ApiError.forbidden(`Akses ditolak untuk peran ${req.auth ? req.auth.peran : 'unknown'}`));
+      await auditRepository.logAccessDenied({
+        akunId: req.auth?.akunId ?? null,
+        peran: req.auth?.peran ?? 'UNKNOWN',
+        method: req.method,
+        path: req.originalUrl || req.path,
+        ipAddress: req.ip
+      });
+      return next(ApiError.fromCode('ERR-AUTH-03'));
     }
     next();
   };
 };
 
 export const requireProfiles = (...allowedProfiles: Profile[]): RequestHandler => {
-  return (req, _res, next) => {
+  return async (req, _res, next) => {
     if (!req.auth) {
-      return next(ApiError.forbidden('Akses ditolak'));
+      return next(ApiError.fromCode('ERR-AUTH-03'));
     }
     const profile = effectiveProfile(req.auth);
     // Profil parent (mis. ADMIN_LOKAL) tetap boleh bila didaftarkan eksplisit.
     if (!allowedProfiles.includes(profile) && !allowedProfiles.includes(req.auth.peran)) {
-      return next(ApiError.forbidden(`Akses ditolak untuk peran ${profile}`));
+      await auditRepository.logAccessDenied({
+        akunId: req.auth.akunId,
+        peran: profile,
+        method: req.method,
+        path: req.originalUrl || req.path,
+        ipAddress: req.ip
+      });
+      return next(ApiError.fromCode('ERR-AUTH-03'));
     }
     next();
   };

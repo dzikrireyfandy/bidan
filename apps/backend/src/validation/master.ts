@@ -190,6 +190,21 @@ export const MASTER_DEFINITIONS: MasterDefinition[] = [
     create: ADMIN_LOKAL
   },
   {
+    path: '/master/diagnosa',
+    config: {
+      table: '[Diagnosa]',
+      pk: 'diagnosa_id',
+      columns: ['kode_icd', 'nama'],
+      orderBy: 'kode_icd'
+    },
+    fields: {
+      kode_icd: TEXT_OPT(30),
+      nama: field(text(100), true)
+    },
+    read: SEMUA_STAF,
+    create: [P.SUPERADMIN, P.ADMIN_LOKAL, P.DOKTER, P.PERAWAT]
+  },
+  {
     path: '/master/vaksin',
     config: {
       table: '[Vaksin]',
